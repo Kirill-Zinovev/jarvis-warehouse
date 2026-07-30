@@ -60,7 +60,15 @@ export async function POST(request: NextRequest) {
 
     const zai = await ZAI.create()
 
-    const response = await zai.chat.completions.createVision({
+    // The SDK exposes createVision at runtime, but its published TypeScript
+    // declarations do not currently include the method.
+    const visionCompletions = zai.chat.completions as typeof zai.chat.completions & {
+      createVision: (payload: Record<string, unknown>) => Promise<{
+        choices: Array<{ message?: { content?: string } }>
+      }>
+    }
+
+    const response = await visionCompletions.createVision({
       messages: [
         { role: 'system', content: SYSTEM_PROMPT },
         {
