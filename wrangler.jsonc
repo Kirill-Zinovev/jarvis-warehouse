@@ -8,14 +8,6 @@
     "directory": ".open-next/assets",
     "binding": "ASSETS"
   },
-  "d1_databases": [
-    {
-      "binding": "DB",
-      "database_name": "jarvis-warehouse",
-      "database_id": "REPLACE_WITH_D1_DATABASE_ID",
-      "migrations_dir": "prisma/migrations"
-    }
-  ],
   "observability": {
     "enabled": true
   }
