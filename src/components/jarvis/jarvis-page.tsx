@@ -45,10 +45,10 @@ async function readFile(file: File): Promise<{ rows: RawRow[]; columns: string[]
   const arrayBuffer = await file.arrayBuffer()
   const workbook = XLSX.read(arrayBuffer, { type: 'array' })
   const sheet = workbook.Sheets[workbook.SheetNames[0]]
-  const rows = XLSX.utils.sheet_to_json(sheet, { defval: '' })
+  const rows = XLSX.utils.sheet_to_json<RawRow>(sheet, { defval: '' })
   if (rows.length === 0) return { rows: [], columns: [] }
   const columns = Object.keys(rows[0])
-  return { rows: rows as RawRow[], columns }
+  return { rows, columns }
 }
 
 /** Try to auto-detect column by common Russian/English names */
