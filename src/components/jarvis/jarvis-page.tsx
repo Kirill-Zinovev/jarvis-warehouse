@@ -731,7 +731,7 @@ export function JarvisPage() {
             Сбросить
           </Button>
         )}
-      </div></div>
+      </div></div></div>
 
       {/* Step 1: Upload files */}
       <AnimatePresence mode="wait">
