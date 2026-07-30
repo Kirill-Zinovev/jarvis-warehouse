@@ -34,7 +34,8 @@ import {
 import { useJarvisStore } from '@/store/jarvis-store'
 import { getMatchSummary } from '@/lib/jarvis-engine'
 import { toast } from 'sonner'
-import type { RawRow, ColumnMap } from '@/types/jarvis'
+import type { RawRow, ColumnMap, MatchResult } from '@/types/jarvis'
+import type { Range } from 'xlsx'
 import { cn } from '@/lib/utils'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -587,7 +588,7 @@ async function exportResultsExcel(results: MatchResult[]) {
   XLSX.utils.sheet_add_aoa(ws, [headers], { origin: 'A1' })
 
   let currentRow = 1 // 0-based row index, first data row after header (row 0)
-  const merges: XLSX.Range[] = []
+  const merges: Range[] = []
 
   for (const group of groups) {
     const startRow = currentRow
