@@ -109,15 +109,18 @@ export function matchShipments(
       continue
     }
 
-    // Allocate demand FIFO across boxes. A shortage belongs to the article,
-    // not to every box row, so it is reported only once on the final row.
+    // Allocate demand FIFO across boxes. The table displays the status on the
+    // first row of an article, so the aggregate shortage must be placed there.
+    const totalAvailable = warehouseEntries.reduce((sum, row) => sum + row.quantity, 0)
+    const totalShortage = Math.max(0, s.quantity - totalAvailable)
     let remainingNeed = s.quantity
     for (let index = 0; index < warehouseEntries.length; index++) {
       const w = warehouseEntries[index]
       const allocated = Math.min(remainingNeed, w.quantity)
       remainingNeed -= allocated
       const isLast = index === warehouseEntries.length - 1
-      const shortage = isLast ? remainingNeed : 0
+      const isFirst = index === 0
+      const shortage = isFirst ? totalShortage : 0
       const status: MatchResult['status'] = shortage > 0 ? 'shortage' : 'enough'
 
       results.push({

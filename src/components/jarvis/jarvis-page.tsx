@@ -411,8 +411,15 @@ function StatusBadge({ status, shortage }: { status: MatchResult['status']; shor
 function ResultsTable({ results }: { results: MatchResult[] }) {
   const [filter, setFilter] = useState<'all' | 'enough' | 'shortage' | 'not_found'>('all')
 
+  // Status belongs to an article, while an article can span several boxes.
+  // Keep every box visible when a status filter is selected.
+  const articleStatus = new Map<string, MatchResult['status']>()
+  for (const result of results) {
+    if (!articleStatus.has(result.article)) articleStatus.set(result.article, result.status)
+  }
+
   const filtered =
-    filter === 'all' ? results : results.filter((r) => r.status === filter)
+    filter === 'all' ? results : results.filter((r) => articleStatus.get(r.article) === filter)
 
   // Group by article for visual separation
   const grouped = new Map<string, MatchResult[]>()
