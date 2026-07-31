@@ -716,8 +716,8 @@ export function JarvisPage() {
         <div className="relative flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
         <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="h-10 w-10 rounded-xl bg-rose-100 dark:bg-rose-900/40 flex items-center justify-center">
-            <Cpu className="h-5 w-5 text-rose-600 dark:text-rose-400" />
+          <div className="h-10 w-10 overflow-hidden rounded-xl shadow-md shadow-rose-500/25">
+            <img src="/jarvis-logo.svg" alt="Jarvis" className="h-full w-full" />
           </div>
           <div>
             <h2 className="text-lg font-bold">Джарвис</h2>

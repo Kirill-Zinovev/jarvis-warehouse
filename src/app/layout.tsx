@@ -4,25 +4,20 @@ import { ThemeProvider } from 'next-themes'
 import { Toaster } from '@/components/ui/sonner'
 import './globals.css'
 
-const geistSans = Geist({
-  variable: '--font-geist-sans',
-  subsets: ['latin'],
-})
-
-const geistMono = Geist_Mono({
-  variable: '--font-geist-mono',
-  subsets: ['latin'],
-})
+const geistSans = Geist({ variable: '--font-geist-sans', subsets: ['latin'] })
+const geistMono = Geist_Mono({ variable: '--font-geist-mono', subsets: ['latin'] })
 
 export const metadata: Metadata = {
   title: 'Jarvis — подбор коробов для отгрузки',
-  description:
-    'Сопоставление плана отгрузки со складскими остатками и подбор коробов по артикулам.',
+  description: 'Сопоставление плана отгрузки со складскими остатками и подбор коробов по артикулам.',
+  icons: {
+    icon: '/jarvis-logo.svg',
+    shortcut: '/jarvis-logo.svg',
+    apple: '/jarvis-logo.svg',
+  },
 }
 
-export default function RootLayout({
-  children,
-}: Readonly<{ children: React.ReactNode }>) {
+export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="ru" suppressHydrationWarning>
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased bg-background text-foreground`}>
