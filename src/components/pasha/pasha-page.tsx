@@ -26,7 +26,7 @@ function baseMapping(columns: string[]): Mapping {
   return { article: findColumn(columns, ['артикул', 'article', 'sku', 'арт', 'код']), box: findColumn(columns, ['короб', 'box', 'ящик', 'коробка', 'место']), quantity: findColumn(columns, ['количество', 'quantity', 'qty', 'остаток', 'в наличии', 'шт']) }
 }
 function jarvisMapping(columns: string[]): Mapping {
-  return { article: findColumn(columns, ['артикул', 'article', 'sku', 'арт', 'код']), box: findColumn(columns, ['короб', 'box', 'ящик', 'коробка', 'место']), quantity: findColumn(columns, ['собрано', 'списать', 'allocated', 'picked', 'взято']) }
+  return { article: findColumn(columns, ['артикул', 'article', 'sku', 'арт', 'код']), box: findColumn(columns, ['короб', 'box', 'ящик', 'коробка', 'место']), quantity: findColumn(columns, ['собрано', 'списать', 'allocated', 'picked', 'взято']) || findColumn(columns, ['нужно', 'need']) }
 }
 async function readSpreadsheet(file: File): Promise<FileData> {
   const XLSX = await import('xlsx')
@@ -45,6 +45,33 @@ function parseRows(file: FileData, mapping: Mapping, carryArticle = false): Inve
     const quantity = toNumber(row[mapping.quantity])
     return article && box && box !== '—' && quantity ? [{ article, box, quantity }] : []
   })
+}
+
+function parseJarvisRows(file: FileData, mapping: Mapping) {
+  const isLegacyReport = normalize(mapping.quantity).includes('НУЖНО')
+  if (!isLegacyReport) return { rows: parseRows(file, mapping, true), isLegacyReport: false }
+
+  const availableColumn = findColumn(file.columns, ['в наличии', 'available', 'остаток'])
+  if (!availableColumn) return { rows: [], isLegacyReport: true }
+
+  let previousArticle = ''
+  let remainingNeed = 0
+  const rows: InventoryRow[] = []
+  for (const row of file.rows) {
+    const rawArticle = String(row[mapping.article] ?? '').trim()
+    if (rawArticle) {
+      previousArticle = rawArticle
+      remainingNeed = toNumber(row[mapping.quantity])
+    }
+    const box = String(row[mapping.box] ?? '').trim()
+    const available = toNumber(row[availableColumn])
+    const quantity = Math.min(remainingNeed, available)
+    if (previousArticle && box && box !== '—' && quantity) {
+      rows.push({ article: previousArticle, box, quantity })
+      remainingNeed -= quantity
+    }
+  }
+  return { rows, isLegacyReport: true }
 }
 function applyWriteOff(baseRows: InventoryRow[], pickedRows: InventoryRow[]) {
   const updated = baseRows.map((row) => ({ ...row }))
@@ -112,10 +139,10 @@ export function PashaPage() {
   const run = () => {
     if (!jarvisFile || !baseFile) return toast.error('Загрузите выгрузку Jarvis и базу склада')
     if (Object.values(jarvisColumns).some((value) => !value) || Object.values(baseColumns).some((value) => !value)) return toast.error('Укажите столбцы в обоих файлах')
-    const picked = parseRows(jarvisFile, jarvisColumns, true); const base = parseRows(baseFile, baseColumns)
-    if (!picked.length) return toast.error('В выгрузке Jarvis не найдена колонка «Собрано»')
+    const jarvis = parseJarvisRows(jarvisFile, jarvisColumns); const base = parseRows(baseFile, baseColumns)
+    if (!jarvis.rows.length) return toast.error('В выгрузке Jarvis не найдены строки для списания')
     if (!base.length) return toast.error('В базе не найдены корректные строки')
-    const next = applyWriteOff(base, picked); setResult(next); setOnlyIssues(false); toast.success(`ПАША списал ${next.totalWrittenOff} шт из базы`)
+    const next = applyWriteOff(base, jarvis.rows); setResult(next); setOnlyIssues(false); toast.success(jarvis.isLegacyReport ? `ПАША распределил и списал ${next.totalWrittenOff} шт по коробам` : `ПАША списал ${next.totalWrittenOff} шт из базы`)
   }
   const exportBase = async () => {
     if (!result) return toast.error('Сначала обновите базу')
