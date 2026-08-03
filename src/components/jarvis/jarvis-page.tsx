@@ -591,7 +591,7 @@ async function exportResultsExcel(results: MatchResult[]) {
     }
   }
 
-  const headers = ['Артикул', 'Нужно (шт)', 'Короб', 'В наличии (шт)', 'Статус']
+  const headers = ['Артикул', 'Нужно (шт)', 'Короб', 'В наличии (шт)', 'Собрано (шт)', 'Статус']
   XLSX.utils.sheet_add_aoa(ws, [headers], { origin: 'A1' })
 
   let currentRow = 1 // 0-based row index, first data row after header (row 0)
@@ -612,18 +612,19 @@ async function exportResultsExcel(results: MatchResult[]) {
         i === 0 ? r.needed : '',           // needed — only first row
         r.status === 'not_found' ? '—' : r.box,
         r.status === 'not_found' ? 0 : r.available,
+        r.status === 'not_found' ? 0 : r.allocated,
         i === 0 ? statusText : '',         // status — only first row (merged)
       ]
       XLSX.utils.sheet_add_aoa(ws, [row], { origin: `A${currentRow + 1}` })
       currentRow++
     }
 
-    // Merge columns A (article), B (needed), E (status) when group has multiple rows
+    // Merge columns A (article), B (needed), F (status) when group has multiple rows
     if (group.length > 1) {
       const endRow = currentRow - 1 // last data row (0-based)
       merges.push({ s: { r: startRow, c: 0 }, e: { r: endRow, c: 0 } }) // Article
       merges.push({ s: { r: startRow, c: 1 }, e: { r: endRow, c: 1 } }) // Needed
-      merges.push({ s: { r: startRow, c: 4 }, e: { r: endRow, c: 4 } }) // Status
+      merges.push({ s: { r: startRow, c: 5 }, e: { r: endRow, c: 5 } }) // Status
     }
   }
 
@@ -639,6 +640,7 @@ async function exportResultsExcel(results: MatchResult[]) {
           case 'Нужно (шт)': return String(r.needed).length + 4
           case 'Короб': return String(r.box).length + 2
           case 'В наличии (шт)': return String(r.available).length + 4
+          case 'Собрано (шт)': return String(r.allocated).length + 4
           default: return 14
         }
       })
@@ -651,11 +653,11 @@ async function exportResultsExcel(results: MatchResult[]) {
 }
 
 async function exportResultsCSV(results: MatchResult[]) {
-  const header = '\uFEFFАртикул,Нужно,Короб,В наличии,Статус\n'
+  const header = '\uFEFFАртикул,Нужно,Короб,В наличии,Собрано,Статус\n'
   const rows = results
     .map(
       (r) =>
-        `${r.article},${r.needed},${r.box},${r.available},${
+        `${r.article},${r.needed},${r.box},${r.available},${r.allocated},${
           r.status === 'enough'
             ? 'Хватает'
             : r.status === 'shortage'
