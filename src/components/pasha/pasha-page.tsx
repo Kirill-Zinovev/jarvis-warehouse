@@ -1,6 +1,6 @@
 'use client'
 
-import { ChangeEvent, useMemo, useRef, useState } from 'react'
+import { ChangeEvent, DragEvent, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { AlertTriangle, CheckCircle2, Database, Download, FileSpreadsheet, Filter, Package, RefreshCcw, RotateCw, Upload } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -108,11 +108,18 @@ function MappingFields({ columns, value, onChange, quantityLabel }: { columns: s
 
 function UploadCard({ title, hint, file, onFile }: { title: string; hint: string; file: FileData | null; onFile: (file: File) => void }) {
   const inputRef = useRef<HTMLInputElement>(null)
+  const [isDragging, setIsDragging] = useState(false)
   const handleChange = (event: ChangeEvent<HTMLInputElement>) => { const chosen = event.target.files?.[0]; if (chosen) onFile(chosen); event.target.value = '' }
+  const handleDrop = (event: DragEvent<HTMLButtonElement>) => {
+    event.preventDefault()
+    setIsDragging(false)
+    const chosen = event.dataTransfer.files?.[0]
+    if (chosen) onFile(chosen)
+  }
   return <div className="rounded-xl border border-rose-100 bg-white p-3 shadow-[0_8px_24px_rgba(92,28,47,0.035)]">
     <input ref={inputRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleChange} />
     <div className="mb-3 text-center"><h2 className="text-base font-semibold text-slate-900">{title}</h2><p className="mt-0.5 text-sm text-slate-500">{hint}</p></div>
-    <button type="button" onClick={() => inputRef.current?.click()} className="flex h-[118px] w-full flex-col items-center justify-center rounded-lg border border-dashed border-rose-300 bg-rose-50/25 text-center transition hover:border-rose-500 hover:bg-rose-50/60">
+    <button type="button" onClick={() => inputRef.current?.click()} onDragEnter={(event) => { event.preventDefault(); setIsDragging(true) }} onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = 'copy'; setIsDragging(true) }} onDragLeave={(event) => { if (event.currentTarget === event.target) setIsDragging(false) }} onDrop={handleDrop} className={`flex h-[118px] w-full flex-col items-center justify-center rounded-lg border border-dashed text-center transition ${isDragging ? 'scale-[1.01] border-rose-500 bg-rose-100 shadow-inner' : 'border-rose-300 bg-rose-50/25 hover:border-rose-500 hover:bg-rose-50/60'}`}>
       <FileSpreadsheet className="mb-2 h-9 w-9 text-rose-500" strokeWidth={1.7} /><span className="text-sm font-semibold text-rose-600">Перетащите файл сюда</span><span className="mt-1 text-xs text-slate-500">или нажмите для выбора</span>
     </button>
     <div className="mt-3 flex min-h-12 items-center gap-3 rounded-lg border border-slate-100 bg-white px-3 py-2 text-sm">
