@@ -135,3 +135,20 @@
   .jarvis-orb-one { width: 180px; height: 180px; right: 8%; top: -90px; background: radial-gradient(circle, rgb(244 63 94 / 0.18), transparent 68%); }
   .jarvis-orb-two { width: 240px; height: 240px; right: -60px; bottom: -150px; background: radial-gradient(circle, rgb(236 72 153 / 0.14), transparent 68%); }
 }
+
+@media print {
+  @page { size: A4 landscape; margin: 10mm; }
+
+  body * { visibility: hidden; }
+  .jarvis-print-results, .jarvis-print-results * { visibility: visible; }
+  .jarvis-print-results { position: absolute; inset: 0; width: 100%; color: #111827 !important; }
+  .jarvis-print-results > :not(.jarvis-print-table) { display: none !important; }
+  .jarvis-print-table, .jarvis-print-scroll { overflow: visible !important; max-height: none !important; border: 0 !important; }
+  .jarvis-print-table-element { width: 100% !important; table-layout: fixed; font-size: 9pt !important; }
+  .jarvis-print-table-element thead { position: static !important; display: table-header-group; }
+  .jarvis-print-table-element tr, .jarvis-print-table-element td, .jarvis-print-table-element th { break-inside: avoid; page-break-inside: avoid; }
+  .jarvis-print-table-element th, .jarvis-print-table-element td { white-space: normal !important; overflow: visible !important; overflow-wrap: anywhere; word-break: break-word; padding: 6px 7px !important; }
+  .jarvis-print-table-element th:nth-child(1), .jarvis-print-table-element td:nth-child(1) { width: 28%; }
+  .jarvis-print-table-element th:nth-child(2), .jarvis-print-table-element td:nth-child(2) { width: 12%; }
+  .jarvis-print-table-element th:nth-child(3), .jarvis-print-table-element td:nth-child(3) { width: 20%; }
+}

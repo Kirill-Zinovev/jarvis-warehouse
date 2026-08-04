@@ -432,7 +432,7 @@ function ResultsTable({ results }: { results: MatchResult[] }) {
   const summary = getMatchSummary(results)
 
   return (
-    <div className="space-y-4">
+    <div className="jarvis-print-results space-y-4">
       {/* Summary cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Card className="p-4">
@@ -483,9 +483,9 @@ function ResultsTable({ results }: { results: MatchResult[] }) {
       </div>
 
       {/* Results table */}
-      <div className="rounded-xl border overflow-hidden">
-        <div className="overflow-x-auto max-h-[500px] overflow-y-auto">
-          <table className="w-full text-sm">
+      <div className="jarvis-print-table rounded-xl border overflow-hidden">
+        <div className="jarvis-print-scroll overflow-x-auto max-h-[500px] overflow-y-auto">
+          <table className="jarvis-print-table-element w-full text-sm">
             <thead className="sticky top-0 bg-muted/90 backdrop-blur-sm z-10">
               <tr>
                 <th className="px-4 py-3 text-left font-semibold">Артикул</th>
