@@ -51,27 +51,41 @@ function parseJarvisRows(file: FileData, mapping: Mapping) {
   const isLegacyReport = normalize(mapping.quantity).includes('НУЖНО')
   if (!isLegacyReport) return { rows: parseRows(file, mapping, true), isLegacyReport: false }
 
-  const availableColumn = findColumn(file.columns, ['в наличии', 'available', 'остаток'])
-  if (!availableColumn) return { rows: [], isLegacyReport: true }
-
-  let previousArticle = ''
-  let remainingNeed = 0
   const rows: InventoryRow[] = []
   for (const row of file.rows) {
     const rawArticle = String(row[mapping.article] ?? '').trim()
-    if (rawArticle) {
-      previousArticle = rawArticle
-      remainingNeed = toNumber(row[mapping.quantity])
-    }
-    const box = String(row[mapping.box] ?? '').trim()
-    const available = toNumber(row[availableColumn])
-    const quantity = Math.min(remainingNeed, available)
-    if (previousArticle && box && box !== '—' && quantity) {
-      rows.push({ article: previousArticle, box, quantity })
-      remainingNeed -= quantity
-    }
+    const quantity = toNumber(row[mapping.quantity])
+    if (rawArticle && quantity) rows.push({ article: rawArticle, box: '', quantity })
   }
   return { rows, isLegacyReport: true }
+}
+
+function applyLegacyWriteOff(baseRows: InventoryRow[], needs: InventoryRow[]) {
+  const updated = baseRows.map((row) => ({ ...row }))
+  const pendingByArticle = new Map<string, InventoryRow>()
+  for (const need of needs) {
+    const key = normalize(need.article)
+    const current = pendingByArticle.get(key)
+    pendingByArticle.set(key, current ? { ...current, quantity: current.quantity + need.quantity } : { ...need })
+  }
+
+  const audit: AuditRow[] = []
+  let totalWrittenOff = 0
+  for (const row of updated) {
+    const pending = pendingByArticle.get(normalize(row.article))
+    if (!pending?.quantity) continue
+    const before = row.quantity
+    const writtenOff = Math.min(before, pending.quantity)
+    if (!writtenOff) continue
+    row.quantity -= writtenOff
+    pending.quantity -= writtenOff
+    totalWrittenOff += writtenOff
+    audit.push({ article: row.article, box: row.box, before, writtenOff, remaining: row.quantity, status: 'updated' })
+  }
+  for (const pending of pendingByArticle.values()) {
+    if (pending.quantity) audit.push({ article: pending.article, box: '—', before: 0, writtenOff: 0, remaining: 0, status: 'insufficient', note: `Не списано ${pending.quantity} шт` })
+  }
+  return { updated, audit, totalWrittenOff }
 }
 function applyWriteOff(baseRows: InventoryRow[], pickedRows: InventoryRow[]) {
   const updated = baseRows.map((row) => ({ ...row }))
@@ -149,7 +163,7 @@ export function PashaPage() {
     const jarvis = parseJarvisRows(jarvisFile, jarvisColumns); const base = parseRows(baseFile, baseColumns)
     if (!jarvis.rows.length) return toast.error('В выгрузке Jarvis не найдены строки для списания')
     if (!base.length) return toast.error('В базе не найдены корректные строки')
-    const next = applyWriteOff(base, jarvis.rows); setResult(next); setOnlyIssues(false); toast.success(jarvis.isLegacyReport ? `ПАША распределил и списал ${next.totalWrittenOff} шт по коробам` : `ПАША списал ${next.totalWrittenOff} шт из базы`)
+    const next = jarvis.isLegacyReport ? applyLegacyWriteOff(base, jarvis.rows) : applyWriteOff(base, jarvis.rows); setResult(next); setOnlyIssues(false); toast.success(jarvis.isLegacyReport ? `ПАША распределил и списал ${next.totalWrittenOff} шт по строкам базы` : `ПАША списал ${next.totalWrittenOff} шт из базы`)
   }
   const exportBase = async () => {
     if (!result) return toast.error('Сначала обновите базу')
