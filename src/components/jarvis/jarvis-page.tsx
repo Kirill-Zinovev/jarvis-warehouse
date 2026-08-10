@@ -628,7 +628,25 @@ async function exportResultsExcel(results: MatchResult[]) {
     }
   }
 
-  ws['!merges'] = merges
+  // Rewrite the export as independent rows before saving. This prevents Excel
+  // from splitting merged article groups across printed pages.
+  const flatRows = results.map((r) => [
+    r.article,
+    r.needed,
+    r.status === 'not_found' ? 'вЂ”' : r.box,
+    r.status === 'not_found' ? 0 : r.available,
+    r.status === 'not_found' ? 0 : r.allocated,
+    r.status === 'enough'
+      ? 'РҐРІР°С‚Р°РµС‚'
+      : r.status === 'shortage'
+        ? `РќРµ С…РІР°С‚Р°РµС‚ ${r.shortage} С€С‚`
+        : 'РќРµ РЅР°Р№РґРµРЅ',
+  ])
+  XLSX.utils.sheet_add_aoa(ws, flatRows, { origin: 'A2' })
+  ws['!merges'] = []
+  ws['!print_title_rows'] = '1:1'
+  ws['!pageSetup'] = { orientation: 'landscape', fitToWidth: 1, fitToHeight: 0, paperSize: 9 }
+  ws['!margins'] = { left: 0.25, right: 0.25, top: 0.5, bottom: 0.5, header: 0.2, footer: 0.2 }
 
   // Auto-fit columns
   ws['!cols'] = headers.map((h) => ({

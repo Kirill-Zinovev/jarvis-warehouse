@@ -146,7 +146,9 @@
   .jarvis-print-table, .jarvis-print-scroll { overflow: visible !important; max-height: none !important; border: 0 !important; }
   .jarvis-print-table-element { width: 100% !important; table-layout: fixed; font-size: 9pt !important; }
   .jarvis-print-table-element thead { position: static !important; display: table-header-group; }
-  .jarvis-print-table-element tr, .jarvis-print-table-element td, .jarvis-print-table-element th { break-inside: avoid; page-break-inside: avoid; }
+  .jarvis-print-table-element tr, .jarvis-print-table-element td, .jarvis-print-table-element th { break-inside: avoid; break-inside: avoid-page; page-break-inside: avoid; }
+  .jarvis-print-table-element tbody tr { break-before: auto; break-after: auto; }
+  .jarvis-print-table-element thead { break-after: avoid; page-break-after: avoid; }
   .jarvis-print-table-element th, .jarvis-print-table-element td { white-space: normal !important; overflow: visible !important; overflow-wrap: anywhere; word-break: break-word; padding: 6px 7px !important; }
   .jarvis-print-table-element th:nth-child(1), .jarvis-print-table-element td:nth-child(1) { width: 28%; }
   .jarvis-print-table-element th:nth-child(2), .jarvis-print-table-element td:nth-child(2) { width: 12%; }
