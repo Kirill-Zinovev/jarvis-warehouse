@@ -205,13 +205,55 @@ function boxFromAddress(value: unknown) {
   return String(value ?? '').trim().split(/[-—–]/, 1)[0].trim()
 }
 
+type AddressEntry = { box: string; quantity?: number }
+
+function parseAddressEntries(value: unknown): AddressEntry[] {
+  const raw = String(value ?? '').replace(/\u00a0/g, ' ').trim()
+  if (!raw) return []
+
+  // One cell may contain several boxes separated by line breaks or commas:
+  // "2K2, бокс — удалено 2 шт\n2a384, бокс — удалено 3 шт".
+  const entries: AddressEntry[] = []
+  const pattern = /([A-Za-zА-Яа-яЁё0-9][A-Za-zА-Яа-яЁё0-9._\\/]*)\s*,?\s*(?:бокс|box)?\s*[-—–:]\s*(?:удалено|списано|removed)\s*([\d\s.,]+)/giu
+  for (const match of raw.matchAll(pattern)) {
+    const box = match[1].trim()
+    const quantity = toNumber(match[2])
+    if (box && quantity > 0) entries.push({ box, quantity })
+  }
+  if (entries.length) return entries
+
+  return raw.split(/[\r\n;|]+/).map((part) => ({
+    box: part.replace(/\s*,\s*(?:бокс|box)\b.*$/iu, '').split(/[-—–:]/, 1)[0].trim(),
+  })).filter((entry) => entry.box)
+}
+
 function parseDeletionRows(file: FileData, mapping: DeletionMapping) {
   return file.rows.flatMap((row) => {
     const article = String(row[mapping.article] ?? '').trim()
-    const box = boxFromAddress(row[mapping.address])
-    const ozon = toNumber(row[mapping.ozon])
-    const wb = toNumber(row[mapping.wb])
-    return article && box && ozon + wb > 0 ? [{ article, box, ozon, wb, total: ozon + wb }] : []
+    const ozonTotal = toNumber(row[mapping.ozon])
+    const wbTotal = toNumber(row[mapping.wb])
+    const sourceTotal = ozonTotal + wbTotal
+    const entries = parseAddressEntries(row[mapping.address])
+    if (!article || !entries.length || sourceTotal <= 0) return []
+
+    // Consume the row total from boxes in the same top-to-bottom order as the
+    // source cell. The OZ/WB columns remain authoritative for the total.
+    let pending = sourceTotal
+    let ozonPending = ozonTotal
+    let wbPending = wbTotal
+    return entries.flatMap((entry, index) => {
+      if (!pending) return []
+      const remainingEntries = entries.length - index - 1
+      const requested = remainingEntries ? (entry.quantity ?? 0) : pending
+      const total = Math.min(pending, requested || pending)
+      if (!total) return []
+      pending -= total
+      const ozon = Math.min(total, ozonPending)
+      const wb = Math.min(total - ozon, wbPending)
+      ozonPending -= ozon
+      wbPending -= wb
+      return [{ article, box: entry.box, ozon, wb, total }]
+    })
   })
 }
 
