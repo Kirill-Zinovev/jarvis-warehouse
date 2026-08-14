@@ -642,6 +642,25 @@ async function exportResultsExcel(results: MatchResult[]) {
         ? `РќРµ С…РІР°С‚Р°РµС‚ ${r.shortage} С€С‚`
         : 'РќРµ РЅР°Р№РґРµРЅ',
   ])
+  // Match the grouped presentation from the app without Excel merged cells:
+  // the article, required quantity, and status appear once, while every box
+  // remains visible on its own row and can safely cross a printed page.
+  const firstArticleRows = new Set<string>()
+  results.forEach((r, index) => {
+    const first = !firstArticleRows.has(r.article)
+    firstArticleRows.add(r.article)
+    if (!first) {
+      flatRows[index][0] = ''
+      flatRows[index][1] = ''
+      flatRows[index][5] = ''
+    } else {
+      flatRows[index][5] = r.status === 'enough'
+        ? '\u0425\u0432\u0430\u0442\u0430\u0435\u0442'
+        : r.status === 'shortage'
+          ? `\u041d\u0435 \u0445\u0432\u0430\u0442\u0430\u0435\u0442 ${r.shortage} \u0448\u0442`
+          : '\u041d\u0435 \u043d\u0430\u0439\u0434\u0435\u043d'
+    }
+  })
   XLSX.utils.sheet_add_aoa(ws, flatRows, { origin: 'A2' })
   ws['!merges'] = []
   ws['!print_title_rows'] = '1:1'
