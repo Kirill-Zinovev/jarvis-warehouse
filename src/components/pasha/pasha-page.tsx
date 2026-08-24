@@ -37,13 +37,16 @@ async function readSpreadsheet(file: File): Promise<FileData> {
   return { name: file.name, rows, columns: rows[0] ? Object.keys(rows[0]) : [], format: 'spreadsheet' }
 }
 
-async function readDeletionPdf(file: File): Promise<FileData> {
+async function readDeletionPdf(file: File | File[]): Promise<FileData> {
   const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs')
-  const document = await pdfjs.getDocument({ data: new Uint8Array(await file.arrayBuffer()) }).promise
+  pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.mjs'
+  const files = Array.isArray(file) ? file : [file]
   const rows: RawRow[] = []
-  for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber += 1) {
-    const page = await document.getPage(pageNumber)
-    const content = await page.getTextContent()
+  for (const sourceFile of files) {
+    const document = await pdfjs.getDocument({ data: new Uint8Array(await sourceFile.arrayBuffer()) }).promise
+    for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber += 1) {
+      const page = await document.getPage(pageNumber)
+      const content = await page.getTextContent()
     const lines = new Map<number, Array<{ x: number; text: string }>>()
     for (const item of content.items) {
       if (!('str' in item) || !item.str.trim()) continue
@@ -52,15 +55,16 @@ async function readDeletionPdf(file: File): Promise<FileData> {
       line.push({ x: item.transform[4], text: item.str.trim() })
       lines.set(y, line)
     }
-    for (const parts of [...lines.entries()].sort((a, b) => b[0] - a[0]).map(([, value]) => value.sort((a, b) => a.x - b.x))) {
-      const line = parts.map((part) => part.text).join(' ').replace(/\s+/g, ' ').trim()
-      const match = line.match(/^\d+\s+([^\s]+)\s+(\d+(?:[.,]\d+)?)\s+(OZON|WB)\s+(.+)$/i)
-      if (!match) continue
-      const [, article, quantity, marketplace, box] = match
-      rows.push({ Артикул: article, Количество: toNumber(quantity), Маркетплейс: marketplace.toUpperCase(), Короб: box.trim() })
+      for (const parts of [...lines.entries()].sort((a, b) => b[0] - a[0]).map(([, value]) => value.sort((a, b) => a.x - b.x))) {
+        const line = parts.map((part) => part.text).join(' ').replace(/\s+/g, ' ').trim()
+        const match = line.match(/^\d+\s+([^\s]+)\s+(\d+(?:[.,]\d+)?)\s+(OZON|WB)\s+(.+)$/i)
+        if (!match) continue
+        const [, article, quantity, marketplace, box] = match
+        rows.push({ Артикул: article, Количество: toNumber(quantity), Маркетплейс: marketplace.toUpperCase(), Короб: box.trim() })
+      }
     }
   }
-  return { name: file.name, rows, columns: ['Артикул', 'Количество', 'Маркетплейс', 'Короб'], format: 'pdf' }
+  return { name: files.map((item) => item.name).join(', '), rows, columns: ['Артикул', 'Количество', 'Маркетплейс', 'Короб'], format: 'pdf' }
 }
 function parseRows(file: FileData, mapping: Mapping, carryArticle = false): InventoryRow[] {
   let previousArticle = ''
@@ -147,15 +151,15 @@ function MappingFields({ columns, value, onChange, quantityLabel }: { columns: s
   return <div className="mt-3 grid gap-2 sm:grid-cols-3">{fields.map(([field, label]) => <label key={field} className="text-xs font-medium text-slate-500">{label}<select className="mt-1 block h-9 w-full rounded-md border border-rose-100 bg-white px-2 text-sm text-slate-800 outline-none focus:border-rose-400" value={value[field]} onChange={(event) => onChange({ ...value, [field]: event.target.value })}><option value="">Выберите столбец</option>{columns.map((column) => <option key={column} value={column}>{column}</option>)}</select></label>)}</div>
 }
 
-function UploadCard({ title, hint, file, onFile, accept = '.xlsx,.xls,.csv' }: { title: string; hint: string; file: FileData | null; onFile: (file: File) => void; accept?: string }) {
+function UploadCard({ title, hint, file, onFile, accept = '.xlsx,.xls,.csv', multiple = false }: { title: string; hint: string; file: FileData | null; onFile: (file: File | File[]) => void; accept?: string; multiple?: boolean }) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [isDragging, setIsDragging] = useState(false)
-  const handleChange = (event: ChangeEvent<HTMLInputElement>) => { const chosen = event.target.files?.[0]; if (chosen) onFile(chosen); event.target.value = '' }
+  const handleChange = (event: ChangeEvent<HTMLInputElement>) => { const chosen = Array.from(event.target.files ?? []); if (chosen.length) onFile(multiple ? chosen : chosen[0]); event.target.value = '' }
   const handleDrop = (event: DragEvent<HTMLButtonElement>) => {
     event.preventDefault()
     setIsDragging(false)
-    const chosen = event.dataTransfer.files?.[0]
-    if (chosen) onFile(chosen)
+    const chosen = Array.from(event.dataTransfer.files ?? [])
+    if (chosen.length) onFile(multiple ? chosen : chosen[0])
   }
   return <div className="rounded-xl border border-rose-100 bg-white p-3 shadow-[0_8px_24px_rgba(92,28,47,0.035)]">
     <input ref={inputRef} type="file" accept={accept} className="hidden" onChange={handleChange} />
@@ -181,8 +185,8 @@ function LegacyPashaPage() {
   const [onlyIssues, setOnlyIssues] = useState(false)
   const errors = useMemo(() => result?.audit.filter((row) => row.status !== 'updated') ?? [], [result])
   const visibleAudit = useMemo(() => (onlyIssues ? errors : result?.audit ?? []), [onlyIssues, errors, result])
-  const handleFile = async (file: File, type: 'jarvis' | 'base') => {
-    try { const data = await readSpreadsheet(file); if (!data.rows.length) throw new Error('В файле нет строк данных'); if (type === 'jarvis') { setJarvisFile(data); setJarvisColumns(jarvisMapping(data.columns)) } else { setBaseFile(data); setBaseColumns(baseMapping(data.columns)) }; setResult(null) } catch (error) { toast.error(error instanceof Error ? error.message : 'Не удалось прочитать файл') }
+  const handleFile = async (file: File | File[], type: 'jarvis' | 'base') => {
+    try { const data = await readSpreadsheet(Array.isArray(file) ? file[0] : file); if (!data.rows.length) throw new Error('В файле нет строк данных'); if (type === 'jarvis') { setJarvisFile(data); setJarvisColumns(jarvisMapping(data.columns)) } else { setBaseFile(data); setBaseColumns(baseMapping(data.columns)) }; setResult(null) } catch (error) { toast.error(error instanceof Error ? error.message : 'Не удалось прочитать файл') }
   }
   const run = () => {
     if (!jarvisFile || !baseFile) return toast.error('Загрузите выгрузку Jarvis и базу склада')
@@ -343,9 +347,11 @@ function DeletionPashaPage() {
   const [showBasePreview, setShowBasePreview] = useState(false)
   const reportErrors = useMemo(() => result?.audit.filter((row) => row.status !== 'updated') ?? [], [result])
   const visible = useMemo(() => { const source = onlyIssues ? reportErrors : result?.audit ?? []; const needle = normalize(query); return needle ? source.filter((row) => `${normalize(row.article)} ${normalize(row.box)}`.includes(needle)) : source }, [onlyIssues, query, reportErrors, result])
-  const handleFile = async (file: File, type: 'report' | 'base') => {
+  const handleFile = async (file: File | File[], type: 'report' | 'base') => {
     try {
-      const data = type === 'report' && file.name.toLowerCase().endsWith('.pdf') ? await readDeletionPdf(file) : await readSpreadsheet(file)
+      const firstFile = Array.isArray(file) ? file[0] : file
+      const isPdf = type === 'report' && (Array.isArray(file) || firstFile.name.toLowerCase().endsWith('.pdf'))
+      const data = isPdf ? await readDeletionPdf(file) : await readSpreadsheet(firstFile)
       if (!data.rows.length) throw new Error('В файле не найдены строки данных')
       if (type === 'report') { setReportFile(data); setReportMapping(deletionMapping(data.columns)); setShowReportPreview(false) } else { setBaseFile(data); setBaseMappingState(baseMapping(data.columns)); setShowBasePreview(false) }
       setResult(null)
@@ -370,7 +376,7 @@ function DeletionPashaPage() {
   const updatedRows = result?.audit.filter((row) => row.status === 'updated').length ?? 0; const deleted = result?.totalDeleted ?? 0
   return <section className="mx-auto w-full max-w-[1450px] px-4 py-6 md:px-8 lg:px-10">
     <div className="grid items-start gap-5 lg:grid-cols-[1fr_210px_1fr]">
-      <div className="relative"><span className="absolute left-4 top-4 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-rose-500 text-sm font-bold text-white">1</span><UploadCard title="Отчёт удаления OZ/WB" hint="Загрузите PDF или Excel/CSV" accept=".pdf,.xlsx,.xls,.csv" file={reportFile} onFile={(file) => handleFile(file, 'report')} />{reportFile && <>{reportFile.format !== 'pdf' && <DeletionMappingFields columns={reportFile.columns} value={reportMapping} onChange={(value) => setReportMapping(value as DeletionMapping)} />}<Button variant="ghost" size="sm" onClick={() => setShowReportPreview((value) => !value)} className="mt-1 text-xs">{showReportPreview ? 'Скрыть предпросмотр' : 'Показать предпросмотр'}</Button>{showReportPreview && <Preview file={reportFile} />}</>}</div>
+      <div className="relative"><span className="absolute left-4 top-4 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-rose-500 text-sm font-bold text-white">1</span><UploadCard title="Отчёт удаления OZ/WB" hint="Загрузите один или несколько PDF" accept=".pdf,.xlsx,.xls,.csv" multiple file={reportFile} onFile={(file) => handleFile(file, 'report')} />{reportFile && <>{reportFile.format !== 'pdf' && <DeletionMappingFields columns={reportFile.columns} value={reportMapping} onChange={(value) => setReportMapping(value as DeletionMapping)} />}<Button variant="ghost" size="sm" onClick={() => setShowReportPreview((value) => !value)} className="mt-1 text-xs">{showReportPreview ? 'Скрыть предпросмотр' : 'Показать предпросмотр'}</Button>{showReportPreview && <Preview file={reportFile} />}</>}</div>
       <div className="flex h-full flex-col items-center justify-center py-3 text-center"><div className="flex items-center gap-2 text-rose-300"><span className="h-1.5 w-1.5 rounded-full bg-current" /><span className="h-1.5 w-1.5 rounded-full bg-current" /><span className="h-1.5 w-1.5 rounded-full bg-current" /><ArrowRight className="h-12 w-12 text-rose-500" /><span className="h-1.5 w-1.5 rounded-full bg-current" /><span className="h-1.5 w-1.5 rounded-full bg-current" /><span className="h-1.5 w-1.5 rounded-full bg-current" /></div><h2 className="mt-3 text-sm font-semibold text-slate-800">Сопоставление</h2><p className="mt-1 max-w-48 text-xs leading-5 text-slate-500">Артикул + короб<br />Ozon и WB складываются</p></div>
       <div className="relative"><span className="absolute left-4 top-4 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-rose-500 text-sm font-bold text-white">2</span><UploadCard title="База склада" hint="Загрузите файл Excel или CSV" file={baseFile} onFile={(file) => handleFile(file, 'base')} />{baseFile && <><DeletionMappingFields columns={baseFile.columns} value={baseMappingState} onChange={(value) => setBaseMappingState(value as Mapping)} base /><Button variant="ghost" size="sm" onClick={() => setShowBasePreview((value) => !value)} className="mt-1 text-xs">{showBasePreview ? 'Скрыть предпросмотр' : 'Показать предпросмотр'}</Button>{showBasePreview && <Preview file={baseFile} />}</>}</div>
     </div>
