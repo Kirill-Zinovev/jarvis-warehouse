@@ -359,7 +359,7 @@ function DeletionPashaPage() {
   }
   const run = () => {
     if (!reportFile || !baseFile) return toast.error('Загрузите отчёт OZ/WB и базу склада')
-    if (Object.values(reportMapping).some((value) => !value) || Object.values(baseMappingState).some((value) => !value)) return toast.error('Укажите все столбцы для сопоставления')
+    if ((reportFile.format !== 'pdf' && Object.values(reportMapping).some((value) => !value)) || Object.values(baseMappingState).some((value) => !value)) return toast.error('Укажите все столбцы для сопоставления')
     const report = parseDeletionRows(reportFile, reportMapping); const base = parseRows(baseFile, baseMappingState)
     if (!report.length) return toast.error('В отчёте не найдены строки с количеством удаления')
     if (!base.length) return toast.error('В базе не найдены корректные строки')
