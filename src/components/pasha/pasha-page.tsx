@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 
 type RawRow = Record<string, string | number | null | undefined>
-type FileData = { name: string; rows: RawRow[]; columns: string[]; format?: 'spreadsheet' | 'pdf' }
+type FileData = { name: string; rows: RawRow[]; columns: string[]; format?: 'spreadsheet' | 'pdf'; fileCount?: number }
 type Mapping = { article: string; box: string; quantity: string }
 type InventoryRow = { article: string; box: string; quantity: number }
 type AuditStatus = 'updated' | 'not_found' | 'insufficient'
@@ -64,7 +64,7 @@ async function readDeletionPdf(file: File | File[]): Promise<FileData> {
       }
     }
   }
-  return { name: files.map((item) => item.name).join(', '), rows, columns: ['Артикул', 'Количество', 'Маркетплейс', 'Короб'], format: 'pdf' }
+  return { name: files.length > 1 ? `${files.length} PDF-файла` : files[0].name, rows, columns: ['Артикул', 'Количество', 'Маркетплейс', 'Короб'], format: 'pdf', fileCount: files.length }
 }
 function parseRows(file: FileData, mapping: Mapping, carryArticle = false): InventoryRow[] {
   let previousArticle = ''
@@ -161,14 +161,14 @@ function UploadCard({ title, hint, file, onFile, accept = '.xlsx,.xls,.csv', mul
     const chosen = Array.from(event.dataTransfer.files ?? [])
     if (chosen.length) onFile(multiple ? chosen : chosen[0])
   }
-  return <div className="rounded-xl border border-rose-100 bg-white p-3 shadow-[0_8px_24px_rgba(92,28,47,0.035)]">
+  return <div className="min-w-0 rounded-xl border border-rose-100 bg-white p-3 shadow-[0_8px_24px_rgba(92,28,47,0.035)]">
     <input ref={inputRef} type="file" accept={accept} className="hidden" onChange={handleChange} />
     <div className="mb-3 text-center"><h2 className="text-base font-semibold text-slate-900">{title}</h2><p className="mt-0.5 text-sm text-slate-500">{hint}</p></div>
     <button type="button" onClick={() => inputRef.current?.click()} onDragEnter={(event) => { event.preventDefault(); setIsDragging(true) }} onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = 'copy'; setIsDragging(true) }} onDragLeave={(event) => { if (event.currentTarget === event.target) setIsDragging(false) }} onDrop={handleDrop} className={`flex h-[118px] w-full flex-col items-center justify-center rounded-lg border border-dashed text-center transition ${isDragging ? 'scale-[1.01] border-rose-500 bg-rose-100 shadow-inner' : 'border-rose-300 bg-rose-50/25 hover:border-rose-500 hover:bg-rose-50/60'}`}>
       <FileSpreadsheet className="mb-2 h-9 w-9 text-rose-500" strokeWidth={1.7} /><span className="text-sm font-semibold text-rose-600">Перетащите файл сюда</span><span className="mt-1 text-xs text-slate-500">или нажмите для выбора</span>
     </button>
-    <div className="mt-3 flex min-h-12 items-center gap-3 rounded-lg border border-slate-100 bg-white px-3 py-2 text-sm">
-      {file ? <><FileSpreadsheet className="h-5 w-5 shrink-0 text-emerald-600" /><div className="min-w-0 text-left"><p className="truncate font-medium text-slate-700">{file.name}</p><p className="text-xs text-slate-400">Загружено · {file.rows.length} строк</p></div><CheckCircle2 className="ml-auto h-4 w-4 shrink-0 text-emerald-500" /></> : <><Upload className="h-4 w-4 text-slate-400" /><span className="text-xs text-slate-400">Excel или CSV</span></>}
+    <div className="mt-3 flex min-h-12 min-w-0 items-center gap-3 overflow-hidden rounded-lg border border-slate-100 bg-white px-3 py-2 text-sm">
+      {file ? <><FileSpreadsheet className="h-5 w-5 shrink-0 text-emerald-600" /><div className="min-w-0 flex-1 text-left"><p className="truncate font-medium text-slate-700">{file.name}</p><p className="text-xs text-slate-400">Загружено · {file.rows.length} строк{file.fileCount && file.fileCount > 1 ? ` · ${file.fileCount} файла` : ''}</p></div><CheckCircle2 className="ml-auto h-4 w-4 shrink-0 text-emerald-500" /></> : <><Upload className="h-4 w-4 text-slate-400" /><span className="text-xs text-slate-400">Excel или CSV</span></>}
     </div>
   </div>
 }
