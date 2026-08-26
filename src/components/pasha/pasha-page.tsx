@@ -13,8 +13,20 @@ type InventoryRow = { article: string; box: string; quantity: number }
 type AuditStatus = 'updated' | 'not_found' | 'insufficient'
 type AuditRow = { article: string; box: string; before: number; writtenOff: number; remaining: number; status: AuditStatus; note?: string }
 
-const normalize = (value: unknown) => String(value ?? '').normalize('NFKC').trim().replace(/\s+/g, ' ').toUpperCase()
-const keyOf = (article: string, box: string) => `${normalize(article)}::${normalize(box)}`
+const normalize = (value: unknown) => String(value ?? '')
+  .normalize('NFKC')
+  .replace(/[\u200B-\u200D\uFEFF\u00A0]/g, ' ')
+  .replace(/[‐‑‒–—―]/g, '-')
+  .trim()
+  .replace(/\s+/g, ' ')
+  .toUpperCase()
+
+// Box labels can be copied from systems that mix Cyrillic and Latin lookalikes:
+// e.g. "2в104" and "2b104" are visually the same warehouse location.
+const normalizeBox = (value: unknown) => normalize(value)
+  .replace(/[АВЕКМНОРСТХУ]/g, (letter) => ({ А: 'A', В: 'B', Е: 'E', К: 'K', М: 'M', Н: 'H', О: 'O', Р: 'P', С: 'C', Т: 'T', Х: 'X', У: 'Y' })[letter] ?? letter)
+
+const keyOf = (article: string, box: string) => `${normalize(article)}::${normalizeBox(box)}`
 const toNumber = (value: unknown) => {
   const text = String(value ?? '').trim().replace(/\s/g, '').replace(',', '.')
   const parsed = Number(text) || Number(text.match(/-?\d+(?:\.\d+)?/)?.[0] ?? 0)
