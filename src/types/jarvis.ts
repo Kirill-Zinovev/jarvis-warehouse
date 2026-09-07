@@ -13,6 +13,8 @@ export interface ShipmentRow {
 export interface WarehouseRow {
   article: string
   box: string
+  /** Storage area from the warehouse source, e.g. "2 этаж" or "БОКС". */
+  section: string
   quantity: number
 }
 
@@ -21,6 +23,7 @@ export interface MatchResult {
   article: string
   needed: number
   box: string
+  section: string
   available: number
   status: 'enough' | 'shortage' | 'not_found'
   shortage: number
@@ -43,4 +46,5 @@ export interface ColumnMap {
   article: string
   quantity: string
   box?: string // only for warehouse file
+  section?: string // only for warehouse file
 }

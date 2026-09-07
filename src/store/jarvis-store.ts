@@ -60,6 +60,7 @@ function parseWarehouseRows(file: FileData, map: ColumnMap): WarehouseRow[] {
     .map((row) => ({
       article: cleanValue(row[map.article]),
       box: cleanValue(row[map.box || '']),
+      section: cleanValue(row[map.section || '']) || '—',
       quantity: Number(row[map.quantity]),
     }))
     .filter((r) => r.article && r.box && Number.isFinite(r.quantity) && r.quantity > 0)

@@ -75,6 +75,7 @@ function autoDetectColumn(columns: string[], candidates: string[]): string {
 const ARTICLE_NAMES = ['артикул', 'article', 'арт', 'код', 'sku', 'номенклатура', 'item']
 const QUANTITY_NAMES = ['количество', 'quantity', 'qty', 'кол-во', 'кол', 'шт', 'ост']
 const BOX_NAMES = ['короб', 'box', 'ящик', 'место', 'местонахождение', 'location', 'коробка', 'полка', 'rack']
+const SECTION_NAMES = ['этаж/бокс', 'этаж', 'бокс', 'floor', 'section', 'zone', 'участок']
 
 function autoShipmentMap(columns: string[]): ColumnMap {
   return {
@@ -88,6 +89,7 @@ function autoWarehouseMap(columns: string[]): ColumnMap {
     article: autoDetectColumn(columns, ARTICLE_NAMES),
     box: autoDetectColumn(columns, BOX_NAMES),
     quantity: autoDetectColumn(columns, QUANTITY_NAMES),
+    section: columns.find((column) => SECTION_NAMES.some((candidate) => column.toLowerCase().includes(candidate.toLowerCase()))) || '',
   }
 }
 
@@ -240,7 +242,7 @@ function ColumnMapper({
           Автоопределение
         </Button>
       </div>
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+      <div className={cn('grid grid-cols-2 gap-3', type === 'warehouse' ? 'md:grid-cols-4' : 'md:grid-cols-3')}>
         <div className="space-y-1.5">
           <label className="text-xs text-muted-foreground">Артикул</label>
           <Select
@@ -268,6 +270,28 @@ function ColumnMapper({
               value={mapping?.box || ''}
               onValueChange={(v) =>
                 setMapping({ ...((mapping || { article: file.columns[0] || '', quantity: file.columns[2] || '' }) as ColumnMap), box: v })
+              }
+            >
+              <SelectTrigger className="h-9 text-sm">
+                <SelectValue placeholder="Выберите колонку" />
+              </SelectTrigger>
+              <SelectContent>
+                {file.columns.map((col) => (
+                  <SelectItem key={col} value={col}>
+                    {col}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+        {type === 'warehouse' && (
+          <div className="space-y-1.5">
+            <label className="text-xs text-muted-foreground">Участок</label>
+            <Select
+              value={mapping?.section || ''}
+              onValueChange={(v) =>
+                setMapping({ ...((mapping || { article: file.columns[0] || '', box: file.columns[1] || '', quantity: file.columns[2] || '' }) as ColumnMap), section: v })
               }
             >
               <SelectTrigger className="h-9 text-sm">
@@ -490,6 +514,7 @@ function ResultsTable({ results }: { results: MatchResult[] }) {
               <tr>
                 <th className="px-4 py-3 text-left font-semibold">Артикул</th>
                 <th className="px-4 py-3 text-left font-semibold">Нужно</th>
+                <th className="px-4 py-3 text-left font-semibold">Участок</th>
                 <th className="px-4 py-3 text-left font-semibold">Короб</th>
                 <th className="px-4 py-3 text-left font-semibold">В наличии</th>
                 <th className="px-4 py-3 text-left font-semibold">Статус</th>
@@ -522,6 +547,9 @@ function ResultsTable({ results }: { results: MatchResult[] }) {
                         <span className="font-semibold">{row.needed}</span> шт
                       </td>
                     ) : null}
+                    <td className="px-4 py-2.5">
+                      {row.section === '—' ? <span className="text-muted-foreground">—</span> : row.section}
+                    </td>
                     <td className="px-4 py-2.5">
                       {row.status === 'not_found' ? (
                         <span className="text-muted-foreground">—</span>
@@ -591,7 +619,7 @@ async function exportResultsExcel(results: MatchResult[]) {
     }
   }
 
-  const headers = ['Артикул', 'Нужно (шт)', 'Короб', 'В наличии (шт)', 'Собрано (шт)', 'Статус']
+  const headers = ['Артикул', 'Нужно (шт)', 'Участок', 'Короб', 'В наличии (шт)', 'Собрано (шт)', 'Статус']
   XLSX.utils.sheet_add_aoa(ws, [headers], { origin: 'A1' })
 
   let currentRow = 1 // 0-based row index, first data row after header (row 0)
@@ -610,6 +638,7 @@ async function exportResultsExcel(results: MatchResult[]) {
       const row = [
         i === 0 ? r.article : '',         // article — only first row
         i === 0 ? r.needed : '',           // needed — only first row
+        r.status === 'not_found' ? '—' : r.section,
         r.status === 'not_found' ? '—' : r.box,
         r.status === 'not_found' ? 0 : r.available,
         r.status === 'not_found' ? 0 : r.allocated,
@@ -633,6 +662,7 @@ async function exportResultsExcel(results: MatchResult[]) {
   const flatRows = results.map((r) => [
     r.article,
     r.needed,
+    r.status === 'not_found' ? '—' : r.section,
     r.status === 'not_found' ? 'вЂ”' : r.box,
     r.status === 'not_found' ? 0 : r.available,
     r.status === 'not_found' ? 0 : r.allocated,
@@ -652,9 +682,9 @@ async function exportResultsExcel(results: MatchResult[]) {
     if (!first) {
       flatRows[index][0] = ''
       flatRows[index][1] = ''
-      flatRows[index][5] = ''
+      flatRows[index][6] = ''
     } else {
-      flatRows[index][5] = r.status === 'enough'
+      flatRows[index][6] = r.status === 'enough'
         ? '\u0425\u0432\u0430\u0442\u0430\u0435\u0442'
         : r.status === 'shortage'
           ? `\u041d\u0435 \u0445\u0432\u0430\u0442\u0430\u0435\u0442 ${r.shortage} \u0448\u0442`
@@ -675,6 +705,7 @@ async function exportResultsExcel(results: MatchResult[]) {
         switch (h) {
           case 'Артикул': return String(r.article).length + 2
           case 'Нужно (шт)': return String(r.needed).length + 4
+          case 'Участок': return String(r.section).length + 2
           case 'Короб': return String(r.box).length + 2
           case 'В наличии (шт)': return String(r.available).length + 4
           case 'Собрано (шт)': return String(r.allocated).length + 4
@@ -690,11 +721,11 @@ async function exportResultsExcel(results: MatchResult[]) {
 }
 
 async function exportResultsCSV(results: MatchResult[]) {
-  const header = '\uFEFFАртикул,Нужно,Короб,В наличии,Собрано,Статус\n'
+  const header = '\uFEFFАртикул,Нужно,Участок,Короб,В наличии,Собрано,Статус\n'
   const rows = results
     .map(
       (r) =>
-        `${r.article},${r.needed},${r.box},${r.available},${r.allocated},${
+        `${r.article},${r.needed},${r.section},${r.box},${r.available},${r.allocated},${
           r.status === 'enough'
             ? 'Хватает'
             : r.status === 'shortage'

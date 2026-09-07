@@ -31,12 +31,12 @@ function aggregateShipments(shipments: ShipmentRow[]): ShipmentRow[] {
 }
 
 /**
- * Aggregate warehouse rows: sum quantities for identical (article, box) pairs.
+ * Aggregate warehouse rows: sum quantities for identical (article, section, box) positions.
  */
 function aggregateWarehouse(warehouse: WarehouseRow[]): WarehouseRow[] {
   const map = new Map<string, WarehouseRow>()
   for (const w of warehouse) {
-    const key = `${normalize(w.article)}||${normalize(w.box)}`
+    const key = `${normalize(w.article)}||${normalize(w.section)}||${normalize(w.box)}`
     const existing = map.get(key)
     if (existing) {
       existing.quantity += w.quantity
@@ -48,12 +48,12 @@ function aggregateWarehouse(warehouse: WarehouseRow[]): WarehouseRow[] {
 }
 
 /**
- * Aggregate match results: sum available quantities for identical (article, box) pairs.
+ * Aggregate match results: sum available quantities for identical (article, section, box) positions.
  */
 function aggregateResults(results: MatchResult[]): MatchResult[] {
   const map = new Map<string, MatchResult>()
   for (const r of results) {
-    const key = `${normalize(r.article)}||${normalize(r.box)}`
+    const key = `${normalize(r.article)}||${normalize(r.section)}||${normalize(r.box)}`
     const existing = map.get(key)
     if (existing) {
       existing.available += r.available
@@ -100,6 +100,7 @@ export function matchShipments(
         article: s.article,
         needed: s.quantity,
         box: '—',
+        section: '—',
         available: 0,
         status: 'not_found',
         shortage: s.quantity,
@@ -127,6 +128,7 @@ export function matchShipments(
         article: s.article,
         needed: s.quantity,
         box: w.box,
+        section: w.section,
         available: w.quantity,
         status,
         shortage,
