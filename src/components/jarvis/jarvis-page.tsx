@@ -620,7 +620,7 @@ async function exportResultsExcel(results: MatchResult[]) {
     }
   }
 
-  const headers = ['Артикул', 'Нужно (шт)', 'Участок', 'Короб', 'В наличии (шт)', 'Собрано (шт)', 'Статус']
+  const headers = ['Артикул', 'Нужно, шт.', 'Участок', 'Короб', 'В наличии, шт.', 'Взять, шт.', 'Статус']
   XLSX.utils.sheet_add_aoa(ws, [headers], { origin: 'A1' })
 
   let currentRow = 1 // 0-based row index, first data row after header (row 0)
@@ -663,8 +663,8 @@ async function exportResultsExcel(results: MatchResult[]) {
   const flatRows = results.map((r) => [
     r.article,
     r.needed,
-    r.status === 'not_found' ? '—' : r.section,
-    r.status === 'not_found' ? 'вЂ”' : r.box,
+    r.status === 'not_found' ? '—' : r.section.replace(/^(\d+)\s*ЭТАЖ$/i, '$1 этаж'),
+    r.status === 'not_found' ? '—' : r.box,
     r.status === 'not_found' ? 0 : r.available,
     r.status === 'not_found' ? 0 : r.allocated,
     r.status === 'enough'
@@ -700,12 +700,12 @@ async function exportResultsExcel(results: MatchResult[]) {
   ws['!pageSetup'] = { orientation: 'landscape', fitToWidth: 1, fitToHeight: 0, paperSize: 9 }
   ws['!margins'] = { left: 0.25, right: 0.25, top: 0.5, bottom: 0.5, header: 0.2, footer: 0.2 }
 
-  const groupFills = ['FFF7ED', 'EFF6FF', 'F0FDFA', 'FDF4FF']
+  const groupFills = ['FFFFFF', 'F3F4F6']
   const borderColor = 'FFE2E8F0'
-  const groupBorderColor = 'FFF43F5E'
+  const groupBorderColor = 'FFCBD5E1'
   const cellStyle = (rowNumber: number, columnNumber: number, style: Record<string, unknown>) => {
     const address = XLSX.utils.encode_cell({ r: rowNumber - 1, c: columnNumber })
-    ws[address] = { ...(ws[address] || {}), s: style }
+    ws[address] = { ...(ws[address] || {}), s: { ...ws[address]?.s, ...style } }
   }
   const rowCursorStart = 2
   let rowCursor = rowCursorStart
@@ -718,10 +718,11 @@ async function exportResultsExcel(results: MatchResult[]) {
       for (let column = 0; column < headers.length; column += 1) {
         cellStyle(rowNumber, column, {
           fill: { fgColor: { rgb: fill } },
-          alignment: { vertical: 'center', horizontal: column >= 1 && column <= 5 ? 'right' : 'left' },
+          font: { name: 'Calibri', sz: 11, color: { rgb: 'FF334155' } },
+          alignment: { vertical: 'center', horizontal: [1, 4, 5].includes(column) ? 'right' : 'left', wrapText: true },
           border: {
-            top: { style: first ? 'medium' : 'thin', color: { rgb: first ? groupBorderColor : borderColor } },
-            bottom: { style: last ? 'medium' : 'thin', color: { rgb: last ? groupBorderColor : borderColor } },
+            top: { style: first ? 'thin' : 'hair', color: { rgb: first ? groupBorderColor : borderColor } },
+            bottom: { style: last ? 'thin' : 'hair', color: { rgb: last ? groupBorderColor : borderColor } },
           },
         })
       }
@@ -729,12 +730,18 @@ async function exportResultsExcel(results: MatchResult[]) {
         fill: { fgColor: { rgb: fill } },
         font: { bold: first, color: { rgb: 'FF111827' } },
         alignment: { vertical: 'center', horizontal: 'left' },
-        border: { top: { style: first ? 'medium' : 'thin', color: { rgb: first ? groupBorderColor : borderColor } }, bottom: { style: last ? 'medium' : 'thin', color: { rgb: last ? groupBorderColor : borderColor } } },
+        border: { top: { style: first ? 'thin' : 'hair', color: { rgb: first ? groupBorderColor : borderColor } }, bottom: { style: last ? 'thin' : 'hair', color: { rgb: last ? groupBorderColor : borderColor } } },
       })
       if (first) {
         cellStyle(rowNumber, 1, { fill: { fgColor: { rgb: fill } }, font: { bold: true }, alignment: { vertical: 'center', horizontal: 'right' } })
         cellStyle(rowNumber, 6, { fill: { fgColor: { rgb: fill } }, font: { bold: true }, alignment: { vertical: 'center', horizontal: 'left' } })
+        const color = row.status === 'enough' ? '15803D' : row.status === 'shortage' ? 'B45309' : 'B91C1C'
+        cellStyle(rowNumber, 6, { font: { name: 'Calibri', sz: 11, bold: true, color: { rgb: color } } })
       }
+      cellStyle(rowNumber, 5, {
+        font: { name: 'Calibri', sz: 11, bold: row.allocated > 0, color: { rgb: row.allocated > 0 ? '15803D' : '94A3B8' } },
+        fill: { fgColor: { rgb: row.allocated > 0 ? 'DCFCE7' : fill } },
+      })
     })
     rowCursor += group.length
   })
@@ -743,10 +750,10 @@ async function exportResultsExcel(results: MatchResult[]) {
     ws[address] = {
       ...(ws[address] || {}),
       s: {
-        fill: { fgColor: { rgb: 'FFE11D48' } },
+        fill: { fgColor: { rgb: 'FF334155' } },
         font: { bold: true, color: { rgb: 'FFFFFFFF' } },
         alignment: { vertical: 'center', horizontal: 'center', wrapText: true },
-        border: { bottom: { style: 'medium', color: { rgb: 'FF9F1239' } } },
+        border: { bottom: { style: 'thin', color: { rgb: 'FFCBD5E1' } } },
       },
     }
   })
@@ -769,6 +776,8 @@ async function exportResultsExcel(results: MatchResult[]) {
     ),
   }))
 
+  ws['!cols'] = [22, 15, 18, 22, 21, 17, 30].map((wch) => ({ wch }))
+  ws['!rows'] = [{ hpt: 32 }, ...flatRows.map(() => ({ hpt: 24 }))]
   XLSX.utils.book_append_sheet(wb, ws, 'Результат Джарвис')
   XLSX.writeFile(wb, `jarvis-result-${new Date().toISOString().slice(0, 10)}.xlsx`)
   toast.success('Результат экспортирован в Excel')
