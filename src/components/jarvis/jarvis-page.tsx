@@ -527,6 +527,7 @@ function ResultsTable({ results }: { results: MatchResult[] }) {
                     key={`${article}-${rowIdx}`}
                     className={cn(
                       'border-t transition-colors hover:bg-muted/30',
+                      groupIdx % 2 === 0 && 'bg-muted/20',
                       row.status === 'not_found' && 'bg-amber-50/50 dark:bg-amber-950/10',
                       row.status === 'shortage' && 'bg-red-50/50 dark:bg-red-950/10'
                     )}
@@ -602,7 +603,7 @@ function ResultsTable({ results }: { results: MatchResult[] }) {
 // ─── Export Functions ─────────────────────────────────────────────────────────
 
 async function exportResultsExcel(results: MatchResult[]) {
-  const XLSX = await import('xlsx')
+  const XLSX = await import('xlsx-js-style')
   const wb = XLSX.utils.book_new()
   const ws = XLSX.utils.aoa_to_sheet([])
 
@@ -693,9 +694,62 @@ async function exportResultsExcel(results: MatchResult[]) {
   })
   XLSX.utils.sheet_add_aoa(ws, flatRows, { origin: 'A2' })
   ws['!merges'] = []
+  ws['!autofilter'] = { ref: `A1:G${flatRows.length + 1}` }
+  ws['!freeze'] = { xSplit: 0, ySplit: 1 }
   ws['!print_title_rows'] = '1:1'
   ws['!pageSetup'] = { orientation: 'landscape', fitToWidth: 1, fitToHeight: 0, paperSize: 9 }
   ws['!margins'] = { left: 0.25, right: 0.25, top: 0.5, bottom: 0.5, header: 0.2, footer: 0.2 }
+
+  const groupFills = ['FFF7ED', 'EFF6FF', 'F0FDFA', 'FDF4FF']
+  const borderColor = 'FFE2E8F0'
+  const groupBorderColor = 'FFF43F5E'
+  const cellStyle = (rowNumber: number, columnNumber: number, style: Record<string, unknown>) => {
+    const address = XLSX.utils.encode_cell({ r: rowNumber - 1, c: columnNumber })
+    ws[address] = { ...(ws[address] || {}), s: style }
+  }
+  const rowCursorStart = 2
+  let rowCursor = rowCursorStart
+  groups.forEach((group, groupIndex) => {
+    const fill = groupFills[groupIndex % groupFills.length]
+    group.forEach((row, offset) => {
+      const rowNumber = rowCursor + offset
+      const first = offset === 0
+      const last = offset === group.length - 1
+      for (let column = 0; column < headers.length; column += 1) {
+        cellStyle(rowNumber, column, {
+          fill: { fgColor: { rgb: fill } },
+          alignment: { vertical: 'center', horizontal: column >= 1 && column <= 5 ? 'right' : 'left' },
+          border: {
+            top: { style: first ? 'medium' : 'thin', color: { rgb: first ? groupBorderColor : borderColor } },
+            bottom: { style: last ? 'medium' : 'thin', color: { rgb: last ? groupBorderColor : borderColor } },
+          },
+        })
+      }
+      cellStyle(rowNumber, 0, {
+        fill: { fgColor: { rgb: fill } },
+        font: { bold: first, color: { rgb: 'FF111827' } },
+        alignment: { vertical: 'center', horizontal: 'left' },
+        border: { top: { style: first ? 'medium' : 'thin', color: { rgb: first ? groupBorderColor : borderColor } }, bottom: { style: last ? 'medium' : 'thin', color: { rgb: last ? groupBorderColor : borderColor } } },
+      })
+      if (first) {
+        cellStyle(rowNumber, 1, { fill: { fgColor: { rgb: fill } }, font: { bold: true }, alignment: { vertical: 'center', horizontal: 'right' } })
+        cellStyle(rowNumber, 6, { fill: { fgColor: { rgb: fill } }, font: { bold: true }, alignment: { vertical: 'center', horizontal: 'left' } })
+      }
+    })
+    rowCursor += group.length
+  })
+  headers.forEach((header, column) => {
+    const address = XLSX.utils.encode_cell({ r: 0, c: column })
+    ws[address] = {
+      ...(ws[address] || {}),
+      s: {
+        fill: { fgColor: { rgb: 'FFE11D48' } },
+        font: { bold: true, color: { rgb: 'FFFFFFFF' } },
+        alignment: { vertical: 'center', horizontal: 'center', wrapText: true },
+        border: { bottom: { style: 'medium', color: { rgb: 'FF9F1239' } } },
+      },
+    }
+  })
 
   // Auto-fit columns
   ws['!cols'] = headers.map((h) => ({
