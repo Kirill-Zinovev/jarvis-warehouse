@@ -35,7 +35,6 @@ import { useJarvisStore } from '@/store/jarvis-store'
 import { getMatchSummary } from '@/lib/jarvis-engine'
 import { toast } from 'sonner'
 import type { RawRow, ColumnMap, MatchResult } from '@/types/jarvis'
-import type { Range } from 'xlsx'
 import { cn } from '@/lib/utils'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -517,6 +516,7 @@ function ResultsTable({ results }: { results: MatchResult[] }) {
                 <th className="px-4 py-3 text-left font-semibold">Участок</th>
                 <th className="px-4 py-3 text-left font-semibold">Короб</th>
                 <th className="px-4 py-3 text-left font-semibold">В наличии</th>
+                <th className="px-4 py-3 text-left font-semibold">Взять</th>
                 <th className="px-4 py-3 text-left font-semibold">Статус</th>
               </tr>
             </thead>
@@ -578,6 +578,18 @@ function ResultsTable({ results }: { results: MatchResult[] }) {
                       )}
                     </td>
                     <td className="px-4 py-2.5">
+                      <span
+                        className={cn(
+                          'font-semibold',
+                          row.allocated > 0
+                            ? 'text-emerald-600 dark:text-emerald-400'
+                            : 'text-muted-foreground'
+                        )}
+                      >
+                        {row.allocated}
+                      </span>
+                    </td>
+                    <td className="px-4 py-2.5">
                       {rowIdx === 0 ? (
                         <StatusBadge status={row.status} shortage={row.shortage} />
                       ) : null}
@@ -602,202 +614,288 @@ function ResultsTable({ results }: { results: MatchResult[] }) {
 
 // ─── Export Functions ─────────────────────────────────────────────────────────
 
+type ArticleSummary = {
+  status: MatchResult['status']
+  shortage: number
+}
+
+function buildArticleSummaries(results: MatchResult[]) {
+  const summaries = new Map<string, ArticleSummary>()
+  const severity: Record<MatchResult['status'], number> = {
+    enough: 0,
+    shortage: 1,
+    not_found: 2,
+  }
+
+  for (const result of results) {
+    const current = summaries.get(result.article)
+    if (!current || severity[result.status] > severity[current.status]) {
+      summaries.set(result.article, { status: result.status, shortage: result.shortage })
+    } else if (result.status === 'shortage') {
+      current.shortage = Math.max(current.shortage, result.shortage)
+    }
+  }
+
+  return summaries
+}
+
+function normalizeSectionKey(value: string) {
+  return String(value ?? '')
+    .normalize('NFKC')
+    .replace(/[\s\u200B-\u200D\uFEFF]/g, '')
+    .toUpperCase()
+}
+
+function displaySection(value: string, status: MatchResult['status']) {
+  if (status === 'not_found' || !value || value === '—') return '—'
+  const compact = normalizeSectionKey(value)
+  const floorMatch = compact.match(/^(\d+)ЭТАЖ$/)
+  if (floorMatch) return `${floorMatch[1]} этаж`
+  return value
+}
+
+function displayBox(value: string, status: MatchResult['status']) {
+  return status === 'not_found' || !value ? '—' : value
+}
+
+function statusLabel(summary: ArticleSummary) {
+  if (summary.status === 'enough') return 'Хватает'
+  if (summary.status === 'shortage') return `Не хватает ${summary.shortage} шт`
+  return 'Не найден'
+}
+
 async function exportResultsExcel(results: MatchResult[]) {
   const XLSX = await import('xlsx-js-style')
   const wb = XLSX.utils.book_new()
-  const ws = XLSX.utils.aoa_to_sheet([])
+  const summaries = buildArticleSummaries(results)
+  const resultHeaders = [
+    'Артикул',
+    'Нужно, шт.',
+    'Участок',
+    'Короб',
+    'В наличии, шт.',
+    'Взять, шт.',
+    'Статус',
+    'Фактически взято',
+    'Комментарий',
+  ]
+  const issueHeaders = [
+    'Артикул',
+    'Нужно, шт.',
+    'Участок',
+    'Короб',
+    'В наличии, шт.',
+    'Взять, шт.',
+    'Статус',
+    'Недостает, шт.',
+    'Причина',
+    'Фактически взято',
+    'Комментарий',
+  ]
 
-  // Group results by article for merging
-  const groups: MatchResult[][] = []
-  const seen = new Map<string, number>()
-  for (const r of results) {
-    const key = r.article
-    if (seen.has(key)) {
-      groups[seen.get(key)!].push(r)
-    } else {
-      seen.set(key, groups.length)
-      groups.push([r])
-    }
-  }
-
-  const headers = ['Артикул', 'Нужно, шт.', 'Участок', 'Короб', 'В наличии, шт.', 'Взять, шт.', 'Статус']
-  XLSX.utils.sheet_add_aoa(ws, [headers], { origin: 'A1' })
-
-  let currentRow = 1 // 0-based row index, first data row after header (row 0)
-  const merges: Range[] = []
-
-  for (const group of groups) {
-    const startRow = currentRow
-    for (let i = 0; i < group.length; i++) {
-      const r = group[i]
-      const statusText =
-        r.status === 'enough'
-          ? 'Хватает'
-          : r.status === 'shortage'
-            ? `Не хватает ${r.shortage} шт`
-            : 'Не найден'
-      const row = [
-        i === 0 ? r.article : '',         // article — only first row
-        i === 0 ? r.needed : '',           // needed — only first row
-        r.status === 'not_found' ? '—' : r.section,
-        r.status === 'not_found' ? '—' : r.box,
-        r.status === 'not_found' ? 0 : r.available,
-        r.status === 'not_found' ? 0 : r.allocated,
-        i === 0 ? statusText : '',         // status — only first row (merged)
+  const makeResultRows = (rows: MatchResult[]) =>
+    rows.map((result) => {
+      const summary = summaries.get(result.article) || {
+        status: result.status,
+        shortage: result.shortage,
+      }
+      return [
+        result.article,
+        result.needed,
+        displaySection(result.section, result.status),
+        displayBox(result.box, result.status),
+        result.status === 'not_found' ? 0 : result.available,
+        result.status === 'not_found' ? 0 : result.allocated,
+        statusLabel(summary),
+        '',
+        '',
       ]
-      XLSX.utils.sheet_add_aoa(ws, [row], { origin: `A${currentRow + 1}` })
-      currentRow++
-    }
+    })
 
-    // Merge columns A (article), B (needed), F (status) when group has multiple rows
-    if (group.length > 1) {
-      const endRow = currentRow - 1 // last data row (0-based)
-      merges.push({ s: { r: startRow, c: 0 }, e: { r: endRow, c: 0 } }) // Article
-      merges.push({ s: { r: startRow, c: 1 }, e: { r: endRow, c: 1 } }) // Needed
-      merges.push({ s: { r: startRow, c: 5 }, e: { r: endRow, c: 5 } }) // Status
-    }
+  const sectionName = (result: MatchResult) => {
+    const key = normalizeSectionKey(result.section)
+    if (key === '2ЭТАЖ') return '2 этаж'
+    if (key === 'БОКС') return 'БОКС'
+    return 'Другие'
   }
 
-  // Rewrite the export as independent rows before saving. This prevents Excel
-  // from splitting merged article groups across printed pages.
-  const flatRows = results.map((r) => [
-    r.article,
-    r.needed,
-    r.status === 'not_found' ? '—' : r.section.replace(/^(\d+)\s*ЭТАЖ$/i, '$1 этаж'),
-    r.status === 'not_found' ? '—' : r.box,
-    r.status === 'not_found' ? 0 : r.available,
-    r.status === 'not_found' ? 0 : r.allocated,
-    r.status === 'enough'
-      ? 'РҐРІР°С‚Р°РµС‚'
-      : r.status === 'shortage'
-        ? `РќРµ С…РІР°С‚Р°РµС‚ ${r.shortage} С€С‚`
-        : 'РќРµ РЅР°Р№РґРµРЅ',
-  ])
-  // Match the grouped presentation from the app without Excel merged cells:
-  // the article, required quantity, and status appear once, while every box
-  // remains visible on its own row and can safely cross a printed page.
-  const firstArticleRows = new Set<string>()
-  results.forEach((r, index) => {
-    const first = !firstArticleRows.has(r.article)
-    firstArticleRows.add(r.article)
-    if (!first) {
-      flatRows[index][0] = ''
-      flatRows[index][1] = ''
-      flatRows[index][6] = ''
-    } else {
-      flatRows[index][6] = r.status === 'enough'
-        ? '\u0425\u0432\u0430\u0442\u0430\u0435\u0442'
-        : r.status === 'shortage'
-          ? `\u041d\u0435 \u0445\u0432\u0430\u0442\u0430\u0435\u0442 ${r.shortage} \u0448\u0442`
-          : '\u041d\u0435 \u043d\u0430\u0439\u0434\u0435\u043d'
-    }
-  })
-  XLSX.utils.sheet_add_aoa(ws, flatRows, { origin: 'A2' })
-  ws['!merges'] = []
-  ws['!autofilter'] = { ref: `A1:G${flatRows.length + 1}` }
-  ws['!freeze'] = { xSplit: 0, ySplit: 1 }
-  ws['!print_title_rows'] = '1:1'
-  ws['!pageSetup'] = { orientation: 'landscape', fitToWidth: 1, fitToHeight: 0, paperSize: 9 }
-  ws['!margins'] = { left: 0.25, right: 0.25, top: 0.5, bottom: 0.5, header: 0.2, footer: 0.2 }
+  const issueRows = results
+    .filter((result) => {
+      return result.status !== 'enough' || result.section === '—' || result.box === '—'
+    })
+    .map((result) => {
+      const summary = summaries.get(result.article) || {
+        status: result.status,
+        shortage: result.shortage,
+      }
+      const reason =
+        result.status === 'not_found'
+          ? 'Артикул не найден в остатках'
+          : result.status === 'shortage'
+            ? `Недостаточно остатка: не хватает ${result.shortage} шт`
+            : 'Не указан участок или короб'
+      return [
+        result.article,
+        result.needed,
+        displaySection(result.section, result.status),
+        displayBox(result.box, result.status),
+        result.status === 'not_found' ? 0 : result.available,
+        result.status === 'not_found' ? 0 : result.allocated,
+        statusLabel(summary),
+        result.shortage,
+        reason,
+        '',
+        '',
+      ]
+    })
 
-  const groupFills = ['FFFFFF', 'F3F4F6']
-  const borderColor = 'FFE2E8F0'
-  const groupBorderColor = 'FFCBD5E1'
-  const cellStyle = (rowNumber: number, columnNumber: number, style: Record<string, unknown>) => {
-    const address = XLSX.utils.encode_cell({ r: rowNumber - 1, c: columnNumber })
-    ws[address] = { ...(ws[address] || {}), s: { ...ws[address]?.s, ...style } }
-  }
-  const rowCursorStart = 2
-  let rowCursor = rowCursorStart
-  groups.forEach((group, groupIndex) => {
-    const fill = groupFills[groupIndex % groupFills.length]
-    group.forEach((row, offset) => {
-      const rowNumber = rowCursor + offset
-      const first = offset === 0
-      const last = offset === group.length - 1
+  const writeSheet = (
+    name: string,
+    headers: string[],
+    rows: (string | number)[][],
+    options: { issueSheet?: boolean } = {}
+  ) => {
+    const ws = XLSX.utils.aoa_to_sheet([headers, ...rows])
+    const lastRow = Math.max(1, rows.length + 1)
+    const lastColumn = headers.length - 1
+    ws['!autofilter'] = {
+      ref: `A1:${XLSX.utils.encode_col(lastColumn)}${lastRow}`,
+    }
+    ws['!freeze'] = { xSplit: 0, ySplit: 1 }
+    ws['!print_title_rows'] = '1:1'
+    ws['!pageSetup'] = { orientation: 'landscape', fitToWidth: 1, fitToHeight: 0, paperSize: 9 }
+    ws['!margins'] = { left: 0.25, right: 0.25, top: 0.5, bottom: 0.5, header: 0.2, footer: 0.2 }
+
+    const groupFills = ['FFFFFFFF', 'FFF3F4F6']
+    const borderColor = 'FFE2E8F0'
+    const groupBorderColor = 'FFCBD5E1'
+    const numericColumns = options.issueSheet ? [1, 4, 5, 7] : [1, 4, 5]
+    const statusColumn = 6
+    const cellStyle = (rowNumber: number, columnNumber: number, style: Record<string, unknown>) => {
+      const address = XLSX.utils.encode_cell({ r: rowNumber - 1, c: columnNumber })
+      ws[address] = { ...(ws[address] || {}), s: { ...ws[address]?.s, ...style } }
+    }
+
+    let groupIndex = -1
+    rows.forEach((row, index) => {
+      const previousArticle = index > 0 ? rows[index - 1][0] : null
+      const isFirst = index === 0 || row[0] !== previousArticle
+      const nextArticle = index + 1 < rows.length ? rows[index + 1][0] : null
+      const isLast = index === rows.length - 1 || row[0] !== nextArticle
+      if (isFirst) groupIndex += 1
+      const fill = groupFills[groupIndex % groupFills.length]
+
       for (let column = 0; column < headers.length; column += 1) {
-        cellStyle(rowNumber, column, {
+        cellStyle(index + 2, column, {
           fill: { fgColor: { rgb: fill } },
           font: { name: 'Calibri', sz: 11, color: { rgb: 'FF334155' } },
-          alignment: { vertical: 'center', horizontal: [1, 4, 5].includes(column) ? 'right' : 'left', wrapText: true },
+          alignment: {
+            vertical: 'center',
+            horizontal: numericColumns.includes(column) ? 'right' : 'left',
+            wrapText: column === 6 || column === 7 || column === 8 || column === 10,
+          },
           border: {
-            top: { style: first ? 'thin' : 'hair', color: { rgb: first ? groupBorderColor : borderColor } },
-            bottom: { style: last ? 'thin' : 'hair', color: { rgb: last ? groupBorderColor : borderColor } },
+            top: { style: isFirst ? 'thin' : 'hair', color: { rgb: isFirst ? groupBorderColor : borderColor } },
+            bottom: { style: isLast ? 'thin' : 'hair', color: { rgb: isLast ? groupBorderColor : borderColor } },
           },
         })
       }
-      cellStyle(rowNumber, 0, {
-        fill: { fgColor: { rgb: fill } },
-        font: { bold: first, color: { rgb: 'FF111827' } },
-        alignment: { vertical: 'center', horizontal: 'left' },
-        border: { top: { style: first ? 'thin' : 'hair', color: { rgb: first ? groupBorderColor : borderColor } }, bottom: { style: last ? 'thin' : 'hair', color: { rgb: last ? groupBorderColor : borderColor } } },
+
+      cellStyle(index + 2, 0, {
+        font: { name: 'Calibri', sz: 11, bold: true, color: { rgb: 'FF111827' } },
       })
-      if (first) {
-        cellStyle(rowNumber, 1, { fill: { fgColor: { rgb: fill } }, font: { bold: true }, alignment: { vertical: 'center', horizontal: 'right' } })
-        cellStyle(rowNumber, 6, { fill: { fgColor: { rgb: fill } }, font: { bold: true }, alignment: { vertical: 'center', horizontal: 'left' } })
-        const color = row.status === 'enough' ? '15803D' : row.status === 'shortage' ? 'B45309' : 'B91C1C'
-        cellStyle(rowNumber, 6, { font: { name: 'Calibri', sz: 11, bold: true, color: { rgb: color } } })
+      const allocated = Number(row[5]) || 0
+      cellStyle(index + 2, 5, {
+        font: { name: 'Calibri', sz: 11, bold: allocated > 0, color: { rgb: allocated > 0 ? 'FF15803D' : 'FF94A3B8' } },
+        fill: { fgColor: { rgb: allocated > 0 ? 'FFDCFCE7' : fill } },
+      })
+
+      const statusText = String(row[statusColumn] || '')
+      const statusColor = statusText.startsWith('Хватает')
+        ? 'FF15803D'
+        : statusText.startsWith('Не хватает')
+          ? 'FFB45309'
+          : 'FFB91C1C'
+      cellStyle(index + 2, statusColumn, {
+        font: { name: 'Calibri', sz: 11, bold: true, color: { rgb: statusColor } },
+      })
+
+      if (options.issueSheet) {
+        cellStyle(index + 2, 7, {
+          font: { name: 'Calibri', sz: 11, bold: Number(row[7]) > 0, color: { rgb: 'FFB91C1C' } },
+        })
+        cellStyle(index + 2, 8, {
+          font: { name: 'Calibri', sz: 11, bold: true, color: { rgb: 'FFB45309' } },
+        })
       }
-      cellStyle(rowNumber, 5, {
-        font: { name: 'Calibri', sz: 11, bold: row.allocated > 0, color: { rgb: row.allocated > 0 ? '15803D' : '94A3B8' } },
-        fill: { fgColor: { rgb: row.allocated > 0 ? 'DCFCE7' : fill } },
-      })
     })
-    rowCursor += group.length
-  })
-  headers.forEach((header, column) => {
-    const address = XLSX.utils.encode_cell({ r: 0, c: column })
-    ws[address] = {
-      ...(ws[address] || {}),
-      s: {
-        fill: { fgColor: { rgb: 'FF334155' } },
-        font: { bold: true, color: { rgb: 'FFFFFFFF' } },
-        alignment: { vertical: 'center', horizontal: 'center', wrapText: true },
-        border: { bottom: { style: 'thin', color: { rgb: 'FFCBD5E1' } } },
-      },
-    }
-  })
 
-  // Auto-fit columns
-  ws['!cols'] = headers.map((h) => ({
-    wch: Math.max(
-      h.length + 2,
-      ...results.map((r) => {
-        switch (h) {
-          case 'Артикул': return String(r.article).length + 2
-          case 'Нужно (шт)': return String(r.needed).length + 4
-          case 'Участок': return String(r.section).length + 2
-          case 'Короб': return String(r.box).length + 2
-          case 'В наличии (шт)': return String(r.available).length + 4
-          case 'Собрано (шт)': return String(r.allocated).length + 4
-          default: return 14
-        }
-      })
-    ),
-  }))
+    headers.forEach((_, column) => {
+      const address = XLSX.utils.encode_cell({ r: 0, c: column })
+      ws[address] = {
+        ...(ws[address] || {}),
+        s: {
+          fill: { fgColor: { rgb: 'FF334155' } },
+          font: { name: 'Calibri', sz: 11, bold: true, color: { rgb: 'FFFFFFFF' } },
+          alignment: { vertical: 'center', horizontal: 'center', wrapText: true },
+          border: { bottom: { style: 'thin', color: { rgb: 'FFCBD5E1' } } },
+        },
+      }
+    })
 
-  ws['!cols'] = [22, 15, 18, 22, 21, 17, 30].map((wch) => ({ wch }))
-  ws['!rows'] = [{ hpt: 32 }, ...flatRows.map(() => ({ hpt: 24 }))]
-  XLSX.utils.book_append_sheet(wb, ws, 'Результат Джарвис')
+    ws['!cols'] = (options.issueSheet
+      ? [22, 14, 16, 18, 17, 14, 25, 16, 38, 20, 30]
+      : [22, 14, 16, 18, 17, 14, 25, 20, 30]
+    ).map((wch) => ({ wch }))
+    ws['!rows'] = [{ hpt: 32 }, ...rows.map(() => ({ hpt: 24 }))]
+    XLSX.utils.book_append_sheet(wb, ws, name)
+  }
+
+  const takeResults = results.filter((result) => result.allocated > 0)
+  const spareResults = results.filter((result) => result.status !== 'not_found' && result.allocated === 0)
+
+  writeSheet('Только взять', resultHeaders, makeResultRows(takeResults))
+  writeSheet('Расхождения', issueHeaders, issueRows, { issueSheet: true })
+  writeSheet('2 этаж', resultHeaders, makeResultRows(results.filter((result) => sectionName(result) === '2 этаж')))
+  writeSheet('БОКС', resultHeaders, makeResultRows(results.filter((result) => sectionName(result) === 'БОКС')))
+  writeSheet('Запасные варианты', resultHeaders, makeResultRows(spareResults))
+  writeSheet('Все результаты', resultHeaders, makeResultRows(results))
+
   XLSX.writeFile(wb, `jarvis-result-${new Date().toISOString().slice(0, 10)}.xlsx`)
-  toast.success('Результат экспортирован в Excel')
+  toast.success('Excel готов: 6 листов с подбором, запасом и расхождениями')
 }
 
 async function exportResultsCSV(results: MatchResult[]) {
-  const header = '\uFEFFАртикул,Нужно,Участок,Короб,В наличии,Собрано,Статус\n'
+  const summaries = buildArticleSummaries(results)
+  const csvCell = (value: string | number) => `"${String(value).replace(/"/g, '""')}"`
+  const header = [
+    'Артикул',
+    'Нужно, шт.',
+    'Участок',
+    'Короб',
+    'В наличии, шт.',
+    'Взять, шт.',
+    'Статус',
+    'Фактически взято',
+    'Комментарий',
+  ].map(csvCell).join(',')
   const rows = results
-    .map(
-      (r) =>
-        `${r.article},${r.needed},${r.section},${r.box},${r.available},${r.allocated},${
-          r.status === 'enough'
-            ? 'Хватает'
-            : r.status === 'shortage'
-              ? `Не хватает ${r.shortage} шт`
-              : 'Не найден'
-        }`
-    )
+    .map((result) => {
+      const summary = summaries.get(result.article) || { status: result.status, shortage: result.shortage }
+      return [
+        result.article,
+        result.needed,
+        displaySection(result.section, result.status),
+        displayBox(result.box, result.status),
+        result.status === 'not_found' ? 0 : result.available,
+        result.status === 'not_found' ? 0 : result.allocated,
+        statusLabel(summary),
+        '',
+        '',
+      ].map(csvCell).join(',')
+    })
     .join('\n')
-  const blob = new Blob([header + rows], { type: 'text/csv;charset=utf-8' })
+  const blob = new Blob([`\uFEFF${header}\n${rows}`], { type: 'text/csv;charset=utf-8' })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
@@ -1040,7 +1138,7 @@ export function JarvisPage() {
                   <strong>Шаг 1.</strong> Загрузите план отгрузки ВБ (Excel с колонками: Артикул, Количество).
                 </p>
                 <p>
-                  <strong>Шаг 2.</strong> Загрузите справочник склада (Excel с колонками: Артикул, Короб, Количество).
+                  <strong>Шаг 2.</strong> Загрузите справочник склада (Артикул, Короб, Участок, Количество). Участок может быть «2 этаж» или «БОКС».
                 </p>
                 <p>
                   <strong>Шаг 3.</strong> Джарвис сопоставит артикулы и покажет, в каких коробах лежит товар и

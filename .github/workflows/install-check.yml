@@ -1,4 +1,4 @@
-name: Dependency installation
+name: Build checks
 
 on:
   push:
@@ -6,7 +6,7 @@ on:
   pull_request:
 
 jobs:
-  install:
+  build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -16,3 +16,4 @@ jobs:
       - run: npm install --global npm@10.8.2
       - run: npm ci --no-audit --no-fund
       - run: npm run build
+      - run: npm run cf:build

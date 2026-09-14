@@ -46,6 +46,13 @@ function cleanValue(val: unknown): string {
     .toUpperCase()
 }
 
+function cleanSectionValue(val: unknown): string {
+  const compact = cleanValue(val)
+  const floorMatch = compact.match(/^(\d+)ЭТАЖ$/)
+  if (floorMatch) return `${floorMatch[1]} этаж`
+  return compact
+}
+
 function parseShipmentRows(file: FileData, map: ColumnMap): ShipmentRow[] {
   return file.rows
     .map((row) => ({
@@ -60,7 +67,7 @@ function parseWarehouseRows(file: FileData, map: ColumnMap): WarehouseRow[] {
     .map((row) => ({
       article: cleanValue(row[map.article]),
       box: cleanValue(row[map.box || '']),
-      section: cleanValue(row[map.section || '']) || '—',
+      section: cleanSectionValue(row[map.section || '']) || '—',
       quantity: Number(row[map.quantity]),
     }))
     .filter((r) => r.article && r.box && Number.isFinite(r.quantity) && r.quantity > 0)

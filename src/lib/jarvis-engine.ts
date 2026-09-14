@@ -68,6 +68,34 @@ function aggregateResults(results: MatchResult[]): MatchResult[] {
 }
 
 /**
+ * Put the most useful warehouse positions first so picking uses as few boxes
+ * as possible. If one box can cover the whole request, prefer the smallest
+ * suitable box; otherwise consume the largest boxes first. Original order is
+ * kept as a deterministic tie-breaker.
+ */
+function prioritizeWarehouseEntries(entries: WarehouseRow[], needed: number): WarehouseRow[] {
+  const indexed = entries.map((entry, index) => ({ entry, index }))
+  const singleBoxCandidates = indexed
+    .filter(({ entry }) => entry.quantity >= needed)
+    .sort((a, b) => a.entry.quantity - b.entry.quantity || a.index - b.index)
+
+  if (singleBoxCandidates.length > 0) {
+    const selected = singleBoxCandidates[0]
+    return [
+      selected.entry,
+      ...indexed
+        .filter(({ index }) => index !== selected.index)
+        .sort((a, b) => a.index - b.index)
+        .map(({ entry }) => entry),
+    ]
+  }
+
+  return indexed
+    .sort((a, b) => b.entry.quantity - a.entry.quantity || a.index - b.index)
+    .map(({ entry }) => entry)
+}
+
+/**
  * Match shipment articles against warehouse reference.
  * All duplicate rows are aggregated before matching.
  */
@@ -110,16 +138,18 @@ export function matchShipments(
       continue
     }
 
-    // Allocate demand FIFO across boxes. The table displays the status on the
-    // first row of an article, so the aggregate shortage must be placed there.
-    const totalAvailable = warehouseEntries.reduce((sum, row) => sum + row.quantity, 0)
+    // Pick the smallest possible number of boxes. The table displays the
+    // status on the first row of an article, so the aggregate shortage must be
+    // placed there.
+    const prioritizedEntries = prioritizeWarehouseEntries(warehouseEntries, s.quantity)
+    const totalAvailable = prioritizedEntries.reduce((sum, row) => sum + row.quantity, 0)
     const totalShortage = Math.max(0, s.quantity - totalAvailable)
     let remainingNeed = s.quantity
-    for (let index = 0; index < warehouseEntries.length; index++) {
-      const w = warehouseEntries[index]
+    for (let index = 0; index < prioritizedEntries.length; index++) {
+      const w = prioritizedEntries[index]
       const allocated = Math.min(remainingNeed, w.quantity)
       remainingNeed -= allocated
-      const isLast = index === warehouseEntries.length - 1
+      const isLast = index === prioritizedEntries.length - 1
       const isFirst = index === 0
       const shortage = isFirst ? totalShortage : 0
       const status: MatchResult['status'] = shortage > 0 ? 'shortage' : 'enough'
