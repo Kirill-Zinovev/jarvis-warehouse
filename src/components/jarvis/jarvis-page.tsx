@@ -39,42 +39,218 @@ import { cn } from '@/lib/utils'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-/** Read an Excel/CSV file and return raw rows + column names */
+type GridRow = unknown[]
+
+const ARTICLE_NAMES = [
+  'артикул',
+  'article',
+  'арт',
+  'код',
+  'sku',
+  'номенклатура',
+  'товар',
+  'item',
+]
+const QUANTITY_NAMES = [
+  'количество конечный остаток',
+  'количество',
+  'quantity',
+  'qty',
+  'кол-во',
+  'кол во',
+  'остаток конечный',
+  'остаток',
+  'остатки',
+  'наличие',
+  'доступно',
+  'кол',
+  'шт',
+  'ост',
+]
+const BOX_NAMES = [
+  'короб',
+  'box',
+  'ящик',
+  'ячейка',
+  'место хранения',
+  'местонахождение',
+  'адрес хранения',
+  'location',
+  'коробка',
+  'полка',
+  'rack',
+]
+const SECTION_NAMES = [
+  'этаж/бокс',
+  'этаж',
+  'бокс',
+  'floor',
+  'section',
+  'zone',
+  'участок',
+  'склад',
+  'помещение',
+  'зона',
+]
+
+function normalizeHeader(value: unknown): string {
+  return String(value ?? '')
+    .normalize('NFKC')
+    .replace(/[\s\u200B-\u200D\uFEFF_\-]/g, '')
+    .toLowerCase()
+}
+
+function textValue(value: unknown): string {
+  return String(value ?? '').normalize('NFKC').trim()
+}
+
+function numericValue(value: unknown): number | null {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null
+  const prepared = textValue(value)
+    .replace(/[\s\u00A0]/g, '')
+    .replace(',', '.')
+  if (!prepared) return null
+  const result = Number(prepared)
+  return Number.isFinite(result) ? result : null
+}
+
+/** Try to auto-detect column by common Russian/English names. */
+function autoDetectColumn(columns: string[], candidates: string[]): string {
+  for (const candidate of candidates) {
+    const wanted = normalizeHeader(candidate)
+    const found = columns.find((column) => normalizeHeader(column) === wanted)
+    if (found) return found
+  }
+  for (const candidate of candidates) {
+    const wanted = normalizeHeader(candidate)
+    const found = columns.find((column) => normalizeHeader(column).includes(wanted))
+    if (found) return found
+  }
+  return ''
+}
+
+function findCell(grid: GridRow[], candidates: string[], maxRows = 12): { row: number; column: number } | null {
+  for (let row = 0; row < Math.min(grid.length, maxRows); row += 1) {
+    for (let column = 0; column < grid[row].length; column += 1) {
+      const value = normalizeHeader(grid[row][column])
+      if (candidates.some((candidate) => value === normalizeHeader(candidate))) {
+        return { row, column }
+      }
+    }
+  }
+  return null
+}
+
+/**
+ * Parse the hierarchical report produced by 1C. It has service rows first,
+ * then a warehouse subtotal row, and item rows with article/box/quantity in
+ * columns A/D/E. The current warehouse section is inherited by each item.
+ */
+function parseOneCWarehouseReport(grid: GridRow[]): { rows: RawRow[]; columns: string[] } | null {
+  const articleHeader = findCell(grid, ['номенклатура'])
+  const boxHeader = findCell(grid, ['ячейка', 'короб'])
+  const quantityHeader = findCell(grid, ['остаток', 'количество'])
+  if (!articleHeader || !boxHeader || !quantityHeader) return null
+
+  const startRow = Math.max(articleHeader.row, boxHeader.row, quantityHeader.row) + 1
+  const hasWarehouseMarker = grid
+    .slice(0, startRow)
+    .some((row) => normalizeHeader(row[0]) === 'склад')
+  if (!hasWarehouseMarker) return null
+
+  const rows: RawRow[] = []
+  let section = '—'
+
+  for (let rowIndex = startRow; rowIndex < grid.length; rowIndex += 1) {
+    const row = grid[rowIndex]
+    const article = textValue(row[articleHeader.column])
+    const box = textValue(row[boxHeader.column])
+    const quantity = numericValue(row[quantityHeader.column])
+    const compactArticle = normalizeHeader(article)
+
+    if (compactArticle === 'итого') break
+
+    if (article && !box && quantity !== null) {
+      const compactSection = normalizeHeader(article)
+      const floorMatch = compactSection.match(/(\d+)этаж/)
+      if (compactSection.includes('бокс') || compactSection.includes('box')) {
+        section = 'БОКС'
+      } else if (floorMatch) {
+        section = `${floorMatch[1]} этаж`
+      } else {
+        section = article
+      }
+      continue
+    }
+
+    if (article && box && quantity !== null && quantity > 0) {
+      rows.push({ Артикул: article, Короб: box, Участок: section, Количество: quantity })
+    }
+  }
+
+  return rows.length > 0
+    ? { rows, columns: ['Артикул', 'Короб', 'Участок', 'Количество'] }
+    : null
+}
+
+function headerRowScore(row: GridRow): number {
+  const values = row.map((value) => textValue(value)).filter(Boolean)
+  const hasArticle = values.some((value) => autoDetectColumn([value], ARTICLE_NAMES) !== '')
+  const hasQuantity = values.some((value) => autoDetectColumn([value], QUANTITY_NAMES) !== '')
+  const hasStorage = values.some(
+    (value) =>
+      autoDetectColumn([value], BOX_NAMES) !== '' ||
+      autoDetectColumn([value], SECTION_NAMES) !== ''
+  )
+  return (hasArticle ? 4 : 0) + (hasQuantity ? 4 : 0) + (hasStorage ? 2 : 0)
+}
+
+function findGenericHeaderRow(grid: GridRow[]): number {
+  let bestRow = -1
+  let bestScore = 0
+  for (let row = 0; row < Math.min(grid.length, 30); row += 1) {
+    const score = headerRowScore(grid[row])
+    if (score > bestScore) {
+      bestRow = row
+      bestScore = score
+    }
+  }
+  return bestRow
+}
+
+/** Read Excel/CSV files, including title rows and hierarchical 1C exports. */
 async function readFile(file: File): Promise<{ rows: RawRow[]; columns: string[] }> {
   const XLSX = await import('xlsx')
   const arrayBuffer = await file.arrayBuffer()
   const workbook = XLSX.read(arrayBuffer, { type: 'array' })
-  const sheet = workbook.Sheets[workbook.SheetNames[0]]
-  const rows = XLSX.utils.sheet_to_json<RawRow>(sheet, { defval: '' })
-  if (rows.length === 0) return { rows: [], columns: [] }
-  const columns = Object.keys(rows[0])
-  return { rows, columns }
-}
+  let fallback: { rows: RawRow[]; columns: string[] } = { rows: [], columns: [] }
 
-/** Try to auto-detect column by common Russian/English names */
-function autoDetectColumn(columns: string[], candidates: string[]): string {
-  for (const c of candidates) {
-    const found = columns.find(
-      (col) =>
-        col.toLowerCase().replace(/[_\s-]/g, '') ===
-        c.toLowerCase().replace(/[_\s-]/g, '')
-    )
-    if (found) return found
-  }
-  // Fuzzy: contains
-  for (const c of candidates) {
-    const found = columns.find((col) =>
-      col.toLowerCase().includes(c.toLowerCase())
-    )
-    if (found) return found
-  }
-  return columns[0] || ''
-}
+  for (const sheetName of workbook.SheetNames) {
+    const sheet = workbook.Sheets[sheetName]
+    const grid = XLSX.utils.sheet_to_json<unknown[]>(sheet, {
+      header: 1,
+      defval: '',
+      raw: true,
+      blankrows: false,
+    })
+    if (grid.length === 0) continue
 
-const ARTICLE_NAMES = ['артикул', 'article', 'арт', 'код', 'sku', 'номенклатура', 'item']
-const QUANTITY_NAMES = ['количество', 'quantity', 'qty', 'кол-во', 'кол', 'шт', 'ост']
-const BOX_NAMES = ['короб', 'box', 'ящик', 'место', 'местонахождение', 'location', 'коробка', 'полка', 'rack']
-const SECTION_NAMES = ['этаж/бокс', 'этаж', 'бокс', 'floor', 'section', 'zone', 'участок']
+    const oneC = parseOneCWarehouseReport(grid)
+    if (oneC) return oneC
+
+    const headerRow = findGenericHeaderRow(grid)
+    const rows = XLSX.utils.sheet_to_json<RawRow>(
+      sheet,
+      headerRow >= 0 ? { range: headerRow, defval: '' } : { defval: '' }
+    )
+    if (rows.length === 0) continue
+    const parsed = { rows, columns: Object.keys(rows[0]) }
+    if (headerRow >= 0) return parsed
+    if (fallback.rows.length === 0) fallback = parsed
+  }
+
+  return fallback
+}
 
 function autoShipmentMap(columns: string[]): ColumnMap {
   return {

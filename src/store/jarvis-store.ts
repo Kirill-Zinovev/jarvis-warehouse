@@ -53,11 +53,19 @@ function cleanSectionValue(val: unknown): string {
   return compact
 }
 
+function parseQuantity(val: unknown): number {
+  if (typeof val === 'number') return val
+  const prepared = String(val ?? '')
+    .replace(/[\s\u00A0]/g, '')
+    .replace(',', '.')
+  return prepared ? Number(prepared) : Number.NaN
+}
+
 function parseShipmentRows(file: FileData, map: ColumnMap): ShipmentRow[] {
   return file.rows
     .map((row) => ({
       article: cleanValue(row[map.article]),
-      quantity: Number(row[map.quantity]),
+      quantity: parseQuantity(row[map.quantity]),
     }))
     .filter((r) => r.article && Number.isFinite(r.quantity) && r.quantity > 0)
 }
@@ -68,7 +76,7 @@ function parseWarehouseRows(file: FileData, map: ColumnMap): WarehouseRow[] {
       article: cleanValue(row[map.article]),
       box: cleanValue(row[map.box || '']),
       section: cleanSectionValue(row[map.section || '']) || '—',
-      quantity: Number(row[map.quantity]),
+      quantity: parseQuantity(row[map.quantity]),
     }))
     .filter((r) => r.article && r.box && Number.isFinite(r.quantity) && r.quantity > 0)
 }
