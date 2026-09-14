@@ -122,6 +122,45 @@
 }
 
 @layer utilities {
+  .jarvis-app {
+    --jarvis-ink: #10204a;
+    --jarvis-muted: #71819a;
+    --jarvis-line: #dfe6ef;
+    --jarvis-paper: #f7f9fc;
+    --jarvis-brand: #e11d48;
+    --jarvis-success: #20ad70;
+    font-family: "Segoe UI", Arial, Helvetica, sans-serif;
+  }
+
+  .jarvis-app ::selection {
+    background: #ffd8e1;
+    color: #10204a;
+  }
+
+  .jarvis-app * {
+    scrollbar-width: thin;
+    scrollbar-color: #b9c7d8 #f1f4f8;
+  }
+
+  .jarvis-app *::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  .jarvis-app *::-webkit-scrollbar-track {
+    background: #f1f4f8;
+  }
+
+  .jarvis-app *::-webkit-scrollbar-thumb {
+    border: 2px solid #f1f4f8;
+    border-radius: 999px;
+    background: #b9c7d8;
+  }
+
+  .jarvis-app *::-webkit-scrollbar-thumb:hover {
+    background: #96a8bf;
+  }
+
   .glass {
     @apply bg-white/70 dark:bg-card/70 backdrop-blur-xl border border-white/40 dark:border-border/40;
   }

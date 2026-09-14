@@ -16,16 +16,15 @@ import {
   HelpCircle,
   ChevronDown,
   Eye,
-  FileText,
   Trash2,
   ArrowRight,
   Cpu,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import {
-  Select,
+  Select as SelectRoot,
   SelectContent,
   SelectItem,
   SelectTrigger,
@@ -276,14 +275,12 @@ function FileUploadZone({
   file,
   onFileLoad,
   icon: Icon,
-  accentColor = 'primary',
 }: {
   title: string
   description: string
   file: { name: string; rows: RawRow[] } | null
   onFileLoad: (name: string, rows: RawRow[], columns: string[]) => void
   icon: React.ElementType
-  accentColor?: string
 }) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [dragOver, setDragOver] = useState(false)
@@ -318,12 +315,12 @@ function FileUploadZone({
   return (
     <Card
       className={cn(
-        'relative transition-all duration-200 border-2 border-dashed',
+        'relative border-[#dfe6ef] bg-white shadow-none transition-all duration-200',
         dragOver
-          ? 'border-primary bg-primary/5 scale-[1.01]'
+          ? 'border-[#e11d48] bg-[#fff7f8] ring-2 ring-[#e11d48]/10'
           : file
-            ? 'border-emerald-300 dark:border-emerald-700 bg-emerald-50/50 dark:bg-emerald-950/20'
-            : 'border-muted-foreground/25 hover:border-primary/50 hover:bg-muted/30'
+            ? 'border-[#ccebdc] bg-[#fbfefc]'
+            : 'hover:border-[#bdc9d8]'
       )}
       onDragOver={(e) => {
         e.preventDefault()
@@ -332,7 +329,7 @@ function FileUploadZone({
       onDragLeave={() => setDragOver(false)}
       onDrop={handleDrop}
     >
-      <CardContent className="p-6 flex flex-col items-center justify-center text-center gap-3 min-h-[180px]">
+      <CardContent className="p-3 sm:p-4">
         <input
           ref={inputRef}
           type="file"
@@ -344,38 +341,43 @@ function FileUploadZone({
             if (inputRef.current) inputRef.current.value = ''
           }}
         />
+        <div className="mb-3 flex items-center gap-3">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-[#f3f6fa] text-[#244f91]">
+            <Icon className="h-[18px] w-[18px]" />
+          </span>
+          <div className="min-w-0 text-left">
+            <p className="text-sm font-bold text-[#15274f]">{title}</p>
+            <p className="mt-0.5 truncate text-[11px] text-[#7a8aa2]">{description}</p>
+          </div>
+        </div>
         {file ? (
-          <>
-            <div className="h-12 w-12 rounded-xl bg-emerald-100 dark:bg-emerald-900/50 flex items-center justify-center">
-              <FileText className="h-6 w-6 text-emerald-600 dark:text-emerald-400" />
+          <div className="flex min-h-12 min-w-0 items-center gap-3 rounded-md border border-[#e6ebf1] bg-[#fbfcfe] px-3 py-2">
+            <FileSpreadsheet className="h-5 w-5 shrink-0 text-[#20a464]" />
+            <div className="min-w-0 flex-1 text-left">
+              <p className="truncate text-xs font-semibold text-[#233556]">{file.name}</p>
+              <p className="mt-0.5 text-[11px] text-[#8794a8]">Загружено · {file.rows.length.toLocaleString('ru-RU')} строк данных</p>
             </div>
-            <div>
-              <p className="font-semibold text-sm">{file.name}</p>
-              <p className="text-xs text-muted-foreground">{file.rows.length} строк данных</p>
-            </div>
+            <CheckCircle2 className="h-4 w-4 shrink-0 text-[#20ad70]" />
             <Button
               variant="ghost"
               size="sm"
-              className="text-xs text-muted-foreground"
+              className="h-7 shrink-0 px-2 text-[11px] text-[#60718b] hover:bg-[#eef3f8] hover:text-[#15274f]"
               onClick={() => inputRef.current?.click()}
             >
-              Заменить файл
+              Заменить
             </Button>
-          </>
+          </div>
         ) : (
-          <>
-            <div className="h-12 w-12 rounded-xl bg-muted/80 flex items-center justify-center">
-              <Icon className="h-6 w-6 text-muted-foreground" />
-            </div>
-            <div>
-              <p className="font-medium text-sm">{title}</p>
-              <p className="text-xs text-muted-foreground mt-1">{description}</p>
-            </div>
-            <Button variant="outline" size="sm" onClick={() => inputRef.current?.click()}>
-              <Upload className="h-4 w-4 mr-1.5" />
-              Выбрать файл
-            </Button>
-          </>
+          <button
+            type="button"
+            aria-label={`Загрузить файл: ${title}`}
+            onClick={() => inputRef.current?.click()}
+            className="flex h-28 w-full flex-col items-center justify-center rounded-md border border-dashed border-[#b9c7d8] bg-[#fcfdff] text-center transition-colors hover:border-[#e11d48] hover:bg-[#fff8fa] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#e11d48]/35"
+          >
+            <Upload className="mb-2 h-6 w-6 text-[#7185a2]" />
+            <span className="text-xs font-bold text-[#d61f45]">Перетащите файл сюда</span>
+            <span className="mt-1 text-[11px] text-[#8b99ad]">или нажмите для выбора · XLSX, XLS, CSV</span>
+          </button>
         )}
       </CardContent>
     </Card>
@@ -408,19 +410,19 @@ function ColumnMapper({
       initial={{ opacity: 0, height: 0 }}
       animate={{ opacity: 1, height: 'auto' }}
       exit={{ opacity: 0, height: 0 }}
-      className="space-y-3"
+      className="space-y-3 border-t border-[#edf1f5] pt-3"
     >
       <div className="flex items-center justify-between">
-        <p className="text-sm font-medium">Настройка колонок</p>
-        <Button variant="ghost" size="sm" className="text-xs h-7" onClick={handleAutoMap}>
+        <p className="text-xs font-bold text-[#344666]">Колонки для сопоставления</p>
+        <Button variant="ghost" size="sm" className="h-7 text-[11px] text-[#60718b] hover:bg-[#f7f9fc] hover:text-[#d61f45]" onClick={handleAutoMap}>
           <Zap className="h-3.5 w-3.5 mr-1" />
           Автоопределение
         </Button>
       </div>
       <div className={cn('grid grid-cols-2 gap-3', type === 'warehouse' ? 'md:grid-cols-4' : 'md:grid-cols-3')}>
         <div className="space-y-1.5">
-          <label className="text-xs text-muted-foreground">Артикул</label>
-          <Select
+          <label className="text-[11px] font-medium text-[#71819a]">Артикул</label>
+           <SelectRoot
             value={mapping?.article || ''}
             onValueChange={(v) =>
               setMapping({ ...((mapping || { quantity: file.columns[1] || '' }) as ColumnMap), article: v })
@@ -436,12 +438,12 @@ function ColumnMapper({
                 </SelectItem>
               ))}
             </SelectContent>
-          </Select>
+           </SelectRoot>
         </div>
         {type === 'warehouse' && (
           <div className="space-y-1.5">
-            <label className="text-xs text-muted-foreground">Короб</label>
-            <Select
+            <label className="text-[11px] font-medium text-[#71819a]">Короб</label>
+             <SelectRoot
               value={mapping?.box || ''}
               onValueChange={(v) =>
                 setMapping({ ...((mapping || { article: file.columns[0] || '', quantity: file.columns[2] || '' }) as ColumnMap), box: v })
@@ -457,13 +459,13 @@ function ColumnMapper({
                   </SelectItem>
                 ))}
               </SelectContent>
-            </Select>
+             </SelectRoot>
           </div>
         )}
         {type === 'warehouse' && (
           <div className="space-y-1.5">
-            <label className="text-xs text-muted-foreground">Участок</label>
-            <Select
+            <label className="text-[11px] font-medium text-[#71819a]">Участок</label>
+             <SelectRoot
               value={mapping?.section || ''}
               onValueChange={(v) =>
                 setMapping({ ...((mapping || { article: file.columns[0] || '', box: file.columns[1] || '', quantity: file.columns[2] || '' }) as ColumnMap), section: v })
@@ -479,12 +481,12 @@ function ColumnMapper({
                   </SelectItem>
                 ))}
               </SelectContent>
-            </Select>
+             </SelectRoot>
           </div>
         )}
         <div className="space-y-1.5">
-          <label className="text-xs text-muted-foreground">Количество</label>
-          <Select
+          <label className="text-[11px] font-medium text-[#71819a]">Количество</label>
+           <SelectRoot
             value={mapping?.quantity || ''}
             onValueChange={(v) =>
               setMapping({ ...((mapping || { article: file.columns[0] || '' }) as ColumnMap), quantity: v })
@@ -500,7 +502,7 @@ function ColumnMapper({
                 </SelectItem>
               ))}
             </SelectContent>
-          </Select>
+           </SelectRoot>
         </div>
       </div>
     </motion.div>
@@ -583,7 +585,7 @@ function DataPreview({
 function StatusBadge({ status, shortage }: { status: MatchResult['status']; shortage: number }) {
   if (status === 'not_found') {
     return (
-      <Badge variant="outline" className="bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-800 gap-1">
+      <Badge variant="outline" className="gap-1 border-[#f5d6a4] bg-[#fff8ea] text-[#ad6a0b] hover:bg-[#fff3d8]">
         <HelpCircle className="h-3 w-3" />
         Не найден
       </Badge>
@@ -591,14 +593,14 @@ function StatusBadge({ status, shortage }: { status: MatchResult['status']; shor
   }
   if (status === 'shortage') {
     return (
-      <Badge variant="outline" className="bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-400 border-red-200 dark:border-red-800 gap-1">
+      <Badge variant="outline" className="gap-1 border-[#f2b7c2] bg-[#fff1f3] text-[#cf2346] hover:bg-[#ffe7eb]">
         <AlertTriangle className="h-3 w-3" />
         Не хватает {shortage} шт
       </Badge>
     )
   }
   return (
-    <Badge variant="outline" className="bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800 gap-1">
+    <Badge variant="outline" className="gap-1 border-[#bfe7d2] bg-[#eefaf3] text-[#178956] hover:bg-[#e4f7ed]">
       <CheckCircle2 className="h-3 w-3" />
       Хватает
     </Badge>
@@ -631,36 +633,30 @@ function ResultsTable({ results }: { results: MatchResult[] }) {
   const summary = getMatchSummary(results)
 
   return (
-    <div className="jarvis-print-results space-y-4">
+    <div className="jarvis-print-results space-y-5">
       {/* Summary cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <Card className="p-4">
-          <p className="text-2xl font-bold text-foreground">{summary.totalArticles}</p>
-          <p className="text-xs text-muted-foreground mt-1">Всего артикулов</p>
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+        <Card className="flex min-h-24 flex-row items-center gap-3 rounded-lg border-[#dfe6ef] bg-white px-4 py-3 shadow-none">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-[#edf4ff] text-[#2b73d2]"><PackageSearch className="h-5 w-5" /></span>
+          <div><p className="text-xl font-extrabold leading-none tracking-tight text-[#10204a]">{summary.totalArticles}</p><p className="mt-1 text-[11px] text-[#7b8aa1]">Всего артикулов</p></div>
         </Card>
-        <Card className="p-4">
-          <p className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">
-            {summary.foundArticles}
-          </p>
-          <p className="text-xs text-muted-foreground mt-1">Найдено на складе</p>
+        <Card className="flex min-h-24 flex-row items-center gap-3 rounded-lg border-[#dfe6ef] bg-white px-4 py-3 shadow-none">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-[#eaf9f1] text-[#1aa565]"><CheckCircle2 className="h-5 w-5" /></span>
+          <div><p className="text-xl font-extrabold leading-none tracking-tight text-[#148451]">{summary.foundArticles}</p><p className="mt-1 text-[11px] text-[#7b8aa1]">Найдено на складе</p></div>
         </Card>
-        <Card className="p-4">
-          <p className="text-2xl font-bold text-red-600 dark:text-red-400">
-            {summary.notFoundArticles}
-          </p>
-          <p className="text-xs text-muted-foreground mt-1">Не найдено</p>
+        <Card className="flex min-h-24 flex-row items-center gap-3 rounded-lg border-[#dfe6ef] bg-white px-4 py-3 shadow-none">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-[#fff5e7] text-[#dd8b13]"><HelpCircle className="h-5 w-5" /></span>
+          <div><p className="text-xl font-extrabold leading-none tracking-tight text-[#d7780d]">{summary.notFoundArticles}</p><p className="mt-1 text-[11px] text-[#7b8aa1]">Не найдено</p></div>
         </Card>
-        <Card className="p-4">
-          <p className="text-2xl font-bold text-amber-600 dark:text-amber-400">
-            {summary.shortageArticles}
-          </p>
-          <p className="text-xs text-muted-foreground mt-1">Не хватает</p>
+        <Card className="flex min-h-24 flex-row items-center gap-3 rounded-lg border-[#dfe6ef] bg-white px-4 py-3 shadow-none">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-[#fff0f2] text-[#e11d48]"><AlertTriangle className="h-5 w-5" /></span>
+          <div><p className="text-xl font-extrabold leading-none tracking-tight text-[#d61f45]">{summary.shortageArticles}</p><p className="mt-1 text-[11px] text-[#7b8aa1]">Не хватает</p></div>
         </Card>
       </div>
 
       {/* Filter tabs */}
-      <div className="flex items-center gap-2 flex-wrap">
-        <span className="text-xs text-muted-foreground mr-1">Фильтр:</span>
+      <div className="flex flex-wrap items-center gap-2 border-b border-[#e4eaf1] pb-3">
+        <span className="mr-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-[#8190a7]">Показать:</span>
         {(
           [
             { key: 'all', label: 'Все', count: results.length },
@@ -673,7 +669,7 @@ function ResultsTable({ results }: { results: MatchResult[] }) {
             key={key}
             variant={filter === key ? 'default' : 'outline'}
             size="sm"
-            className="h-7 text-xs"
+            className={cn('h-8 rounded-md border-[#dfe6ef] px-3 text-xs shadow-none', filter === key ? 'bg-[#10204a] text-white hover:bg-[#182a55]' : 'bg-white text-[#53647e] hover:bg-[#f7f9fc]')}
             onClick={() => setFilter(key)}
           >
             {label} ({count})
@@ -682,18 +678,18 @@ function ResultsTable({ results }: { results: MatchResult[] }) {
       </div>
 
       {/* Results table */}
-      <div className="jarvis-print-table rounded-xl border overflow-hidden">
-        <div className="jarvis-print-scroll overflow-x-auto max-h-[500px] overflow-y-auto">
+      <div className="jarvis-print-table overflow-hidden rounded-lg border border-[#dfe6ef] bg-white">
+        <div className="jarvis-print-scroll max-h-[560px] overflow-x-auto overflow-y-auto">
           <table className="jarvis-print-table-element w-full text-sm">
-            <thead className="sticky top-0 bg-muted/90 backdrop-blur-sm z-10">
+            <thead className="sticky top-0 z-10 bg-[#f0f4f8] text-[#53647e]">
               <tr>
-                <th className="px-4 py-3 text-left font-semibold">Артикул</th>
-                <th className="px-4 py-3 text-left font-semibold">Нужно</th>
-                <th className="px-4 py-3 text-left font-semibold">Участок</th>
-                <th className="px-4 py-3 text-left font-semibold">Короб</th>
-                <th className="px-4 py-3 text-left font-semibold">В наличии</th>
-                <th className="px-4 py-3 text-left font-semibold">Взять</th>
-                <th className="px-4 py-3 text-left font-semibold">Статус</th>
+                <th className="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wide">Артикул</th>
+                <th className="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wide">Нужно</th>
+                <th className="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wide">Участок</th>
+                <th className="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wide">Короб</th>
+                <th className="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wide">В наличии</th>
+                <th className="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wide">Взять</th>
+                <th className="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wide">Статус</th>
               </tr>
             </thead>
             <tbody>
@@ -702,17 +698,17 @@ function ResultsTable({ results }: { results: MatchResult[] }) {
                   <tr
                     key={`${article}-${rowIdx}`}
                     className={cn(
-                      'border-t transition-colors hover:bg-muted/30',
-                      groupIdx % 2 === 0 && 'bg-muted/20',
-                      row.status === 'not_found' && 'bg-amber-50/50 dark:bg-amber-950/10',
-                      row.status === 'shortage' && 'bg-red-50/50 dark:bg-red-950/10'
+                      'border-t border-[#e4eaf1] transition-colors hover:bg-[#f8fafc]',
+                      groupIdx % 2 === 0 && 'bg-[#fbfcfe]',
+                      row.status === 'not_found' && 'bg-[#fffaf1]',
+                      row.status === 'shortage' && 'bg-[#fff5f6]'
                     )}
                   >
                     {rowIdx === 0 ? (
                       <td
                         className={cn(
                           'px-4 py-2.5 font-medium',
-                          groupIdx > 0 && 'border-t-2 border-border'
+                          groupIdx > 0 && 'border-t-2 border-[#dfe6ef]'
                         )}
                         rowSpan={rows.length}
                       >
@@ -1122,33 +1118,7 @@ export function JarvisPage() {
   }
 
   return (
-    <div className="jarvis-shell space-y-6">
-      {/* Header */}
-      <div className="jarvis-hero relative overflow-hidden rounded-[2rem] border border-rose-200/70 bg-gradient-to-br from-rose-50 via-white to-pink-50 p-6 shadow-[0_24px_80px_-36px_rgba(225,29,72,0.45)] dark:border-rose-900/60 dark:from-rose-950/40 dark:via-card dark:to-pink-950/30 sm:p-8">
-        <div className="jarvis-orb jarvis-orb-one" />
-        <div className="jarvis-orb jarvis-orb-two" />
-        <div className="relative flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
-        <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="h-10 w-10 overflow-hidden rounded-xl shadow-md shadow-rose-500/25">
-            <img src="/jarvis-logo.svg" alt="Jarvis" className="h-full w-full" />
-          </div>
-          <div>
-            <h2 className="text-lg font-bold">Джарвис</h2>
-            <p className="text-xs text-muted-foreground">
-              Подбор коробов по артикулам для отгрузки
-            </p>
-          </div>
-        </div>
-        {hasRun && (
-          <Button variant="outline" size="sm" onClick={reset}>
-            <RotateCcw className="h-4 w-4 mr-1.5" />
-            Сбросить
-          </Button>
-        )}
-      </div></div></div>
-
-      {/* Step 1: Upload files */}
+    <div className="jarvis-shell mx-auto w-full max-w-[1280px] space-y-6">
       <AnimatePresence mode="wait">
         {!hasRun ? (
           <motion.div
@@ -1158,173 +1128,117 @@ export function JarvisPage() {
             exit={{ opacity: 0 }}
             className="space-y-6"
           >
-            {/* Upload zones */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="flex flex-col gap-4 border-b border-[#dfe6ef] pb-5 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#8190a7]">Склад / Отгрузка</p>
+                <h1 className="text-[clamp(1.75rem,3vw,2.7rem)] font-extrabold leading-none tracking-[-0.05em] text-[#10204a]">Подбор коробов для отгрузки</h1>
+                <p className="mt-3 max-w-2xl text-sm leading-6 text-[#667894]">Загрузите план отгрузки и остатки склада, сопоставьте артикулы и получите точный список коробов.</p>
+              </div>
+              <div className="flex shrink-0 items-center gap-2 self-start rounded-full border border-[#d8e0e9] bg-white px-3 py-2 text-xs font-medium text-[#63738c] sm:self-auto">
+                <span className="h-2 w-2 rounded-full bg-[#20ad70]" />
+                Данные останутся на устройстве
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 items-center gap-3 rounded-lg border border-[#dfe6ef] bg-white px-4 py-3 sm:grid-cols-3 sm:gap-5">
+              {[
+                ['01', 'Загрузка файлов', 'План и остатки'],
+                ['02', 'Сопоставление', 'Артикулы и короба'],
+                ['03', 'Результат', 'Список для отбора'],
+              ].map(([number, title, caption], index) => (
+                <div key={number} className="flex items-center gap-3 sm:min-w-0">
+                  <span className={cn('flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold', index === 0 ? 'bg-[#e11d48] text-white' : 'bg-[#edf2f7] text-[#5b6d86]')}>{number}</span>
+                  <span className="min-w-0">
+                    <span className={cn('block truncate text-xs font-bold', index === 0 ? 'text-[#15274f]' : 'text-[#61718a]')}>{title}</span>
+                    <span className="mt-0.5 block truncate text-[11px] text-[#8b99ad]">{caption}</span>
+                  </span>
+                  {index < 2 && <ArrowRight className="ml-auto hidden h-4 w-4 shrink-0 text-[#b4c0cf] sm:block" />}
+                </div>
+              ))}
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
               <div className="space-y-3">
                 <FileUploadZone
-                  title="План отгрузки ВБ"
-                  description="Excel с артикулами и количеством для отгрузки"
+                  title="План отгрузки"
+                  description="Файл с артикулами и количеством для отгрузки"
                   file={shipmentFile ? { name: shipmentFile.name, rows: shipmentFile.rows } : null}
                   onFileLoad={handleShipmentLoad}
                   icon={FileSpreadsheet}
                 />
                 {shipmentFile && (
-                  <>
-                    <ColumnMapper
-                      file={shipmentFile}
-                      mapping={shipmentColumns}
-                      setMapping={setShipmentColumns}
-                      type="shipment"
-                    />
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="text-xs"
-                      onClick={() => setShowShipmentPreview(!showShipmentPreview)}
-                    >
-                      <Eye className="h-3.5 w-3.5 mr-1" />
-                      {showShipmentPreview ? 'Скрыть' : 'Показать'} данные
+                  <div className="rounded-md border border-[#dfe6ef] bg-white p-3">
+                    <ColumnMapper file={shipmentFile} mapping={shipmentColumns} setMapping={setShipmentColumns} type="shipment" />
+                    <Button variant="ghost" size="sm" className="mt-2 h-7 px-1 text-[11px] text-[#60718b] hover:bg-transparent hover:text-[#d61f45]" onClick={() => setShowShipmentPreview(!showShipmentPreview)}>
+                      <Eye className="mr-1 h-3.5 w-3.5" />
+                      {showShipmentPreview ? 'Скрыть предпросмотр' : 'Показать предпросмотр'}
                     </Button>
-                    {showShipmentPreview && (
-                      <DataPreview rows={shipmentFile.rows} columns={shipmentFile.columns} />
-                    )}
-                  </>
+                    {showShipmentPreview && <DataPreview rows={shipmentFile.rows} columns={shipmentFile.columns} />}
+                  </div>
                 )}
               </div>
 
               <div className="space-y-3">
                 <FileUploadZone
-                  title="Склад (справочник коробов)"
-                  description="Excel с артикулами, коробами и количеством на складе"
+                  title="Остатки склада"
+                  description="Excel с артикулами, коробами, участками и остатками"
                   file={warehouseFile ? { name: warehouseFile.name, rows: warehouseFile.rows } : null}
                   onFileLoad={handleWarehouseLoad}
                   icon={Box}
                 />
                 {warehouseFile && (
-                  <>
-                    <ColumnMapper
-                      file={warehouseFile}
-                      mapping={warehouseColumns}
-                      setMapping={setWarehouseColumns}
-                      type="warehouse"
-                    />
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="text-xs"
-                      onClick={() => setShowWarehousePreview(!showWarehousePreview)}
-                    >
-                      <Eye className="h-3.5 w-3.5 mr-1" />
-                      {showWarehousePreview ? 'Скрыть' : 'Показать'} данные
+                  <div className="rounded-md border border-[#dfe6ef] bg-white p-3">
+                    <ColumnMapper file={warehouseFile} mapping={warehouseColumns} setMapping={setWarehouseColumns} type="warehouse" />
+                    <Button variant="ghost" size="sm" className="mt-2 h-7 px-1 text-[11px] text-[#60718b] hover:bg-transparent hover:text-[#d61f45]" onClick={() => setShowWarehousePreview(!showWarehousePreview)}>
+                      <Eye className="mr-1 h-3.5 w-3.5" />
+                      {showWarehousePreview ? 'Скрыть предпросмотр' : 'Показать предпросмотр'}
                     </Button>
-                    {showWarehousePreview && (
-                      <DataPreview rows={warehouseFile.rows} columns={warehouseFile.columns} />
-                    )}
-                  </>
+                    {showWarehousePreview && <DataPreview rows={warehouseFile.rows} columns={warehouseFile.columns} />}
+                  </div>
                 )}
               </div>
             </div>
 
-            {/* Flow indicator */}
-            <div className="flex items-center justify-center gap-4 py-2">
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <FileSpreadsheet className="h-4 w-4" />
-                <span className="font-medium">План отгрузки</span>
-              </div>
-              <ArrowRight className="h-4 w-4 text-muted-foreground" />
-              <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
-                <Cpu className="h-4 w-4 text-primary" />
-              </div>
-              <ArrowRight className="h-4 w-4 text-muted-foreground" />
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Box className="h-4 w-4" />
-                <span className="font-medium">Склад</span>
-              </div>
+            <div className="flex flex-col items-center justify-center gap-3 border-y border-[#e4eaf1] py-5 sm:flex-row sm:gap-5">
+              <div className="flex items-center gap-2 text-xs font-semibold text-[#6d7d95]"><FileSpreadsheet className="h-4 w-4 text-[#8292aa]" /> План отгрузки</div>
+              <ArrowRight className="hidden h-4 w-4 text-[#b4c0cf] sm:block" />
+              <div className="flex items-center gap-2 rounded-full bg-[#fff0f3] px-3 py-1.5 text-xs font-bold text-[#d61f45]"><Cpu className="h-4 w-4" /> Сопоставление</div>
+              <ArrowRight className="hidden h-4 w-4 text-[#b4c0cf] sm:block" />
+              <div className="flex items-center gap-2 text-xs font-semibold text-[#6d7d95]"><Box className="h-4 w-4 text-[#8292aa]" /> Остатки склада</div>
             </div>
 
-            {/* Match button */}
-            <div className="flex justify-center">
-              <Button
-                size="lg"
-                disabled={!canRun}
-                onClick={runMatch}
-                className="px-8 bg-gradient-to-r from-rose-600 to-pink-600 hover:from-rose-700 hover:to-pink-700 text-white shadow-lg shadow-rose-500/25"
-              >
-                <Zap className="h-5 w-5 mr-2" />
+            <div className="flex flex-col items-center gap-3">
+              <Button size="lg" disabled={!canRun} onClick={runMatch} className="h-12 min-w-64 rounded-md bg-[#e11d48] px-8 text-sm font-bold text-white shadow-[0_12px_24px_-12px_rgba(225,29,72,0.7)] hover:bg-[#c9183e] focus-visible:ring-[#e11d48]/30">
+                <Zap className="mr-1.5 h-4 w-4" />
                 Собрать данные
+                <ArrowRight className="ml-1 h-4 w-4" />
               </Button>
+              {!canRun && (shipmentFile || warehouseFile) && <p className="text-center text-xs text-[#a06b78]">Загрузите оба файла и настройте колонки для запуска</p>}
             </div>
 
-            {!canRun && (shipmentFile || warehouseFile) && (
-              <p className="text-center text-xs text-muted-foreground">
-                Загрузите оба файла и настройте колонки для запуска
-              </p>
-            )}
+            <div className="flex items-start gap-3 border-t border-[#e4eaf1] pt-5 text-xs text-[#71819a]">
+              <HelpCircle className="mt-0.5 h-4 w-4 shrink-0 text-[#8493aa]" />
+              <p className="max-w-3xl leading-5"><span className="font-bold text-[#344666]">Как работает Jarvis.</span> Он сопоставляет артикул с остатками по коробам, сохраняет участок (`2 этаж` или `БОКС`) и распределяет нужное количество по доступным коробам.</p>
+            </div>
           </motion.div>
         ) : (
-          /* Results */
-          <motion.div
-            key="results"
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.3 }}
-            className="space-y-5"
-          >
-            {/* Results header */}
-            <div className="flex items-center justify-between flex-wrap gap-3">
-              <p className="text-sm text-muted-foreground">
-                Результаты подбора коробов для{' '}
-                <span className="font-semibold text-foreground">{results.length} строк</span>
-              </p>
-              <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => exportResultsExcel(results)}
-                  className="bg-emerald-50 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-950/40"
-                >
-                  <Download className="h-4 w-4 mr-1.5" />
-                  Excel
-                </Button>
-                <Button variant="outline" size="sm" onClick={() => exportResultsCSV(results)}>
-                  <Download className="h-4 w-4 mr-1.5" />
-                  CSV
-                </Button>
-                <Button variant="outline" size="sm" onClick={reset}>
-                  <RotateCcw className="h-4 w-4 mr-1.5" />
-                  Новая сборка
-                </Button>
+          <motion.div key="results" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }} className="space-y-5">
+            <div className="flex flex-col gap-4 border-b border-[#dfe6ef] pb-5 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#8190a7]">Склад / Отгрузка / Результат</p>
+                <h1 className="text-3xl font-extrabold leading-none tracking-[-0.05em] text-[#10204a]">Результат подбора коробов</h1>
+                <p className="mt-3 text-sm text-[#667894]">Показаны найденные коробки и количество товара для каждой позиции.</p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button variant="outline" size="sm" onClick={() => exportResultsExcel(results)} className="border-[#dfe6ef] bg-white text-[#d61f45] hover:border-[#f0a4b3] hover:bg-[#fff6f8]"><Download className="mr-1.5 h-4 w-4" />Экспорт в Excel</Button>
+                <Button variant="outline" size="sm" onClick={() => exportResultsCSV(results)} className="border-[#dfe6ef] bg-white text-[#53647e] hover:bg-[#f7f9fc]"><Download className="mr-1.5 h-4 w-4" />CSV</Button>
+                <Button variant="outline" size="sm" onClick={reset} className="border-[#dfe6ef] bg-white text-[#53647e] hover:bg-[#f7f9fc]"><RotateCcw className="mr-1.5 h-4 w-4" />Новая сборка</Button>
               </div>
             </div>
-
             <ResultsTable results={results} />
           </motion.div>
         )}
       </AnimatePresence>
-
-      {/* Help section */}
-      {!hasRun && (
-        <Card className="bg-muted/30 border-dashed">
-          <CardContent className="p-4">
-            <div className="flex items-start gap-3">
-              <HelpCircle className="h-5 w-5 text-muted-foreground shrink-0 mt-0.5" />
-              <div className="text-xs text-muted-foreground space-y-1.5">
-                <p className="font-medium text-foreground text-sm">Как работает Джарвис</p>
-                <p>
-                  <strong>Шаг 1.</strong> Загрузите план отгрузки ВБ (Excel с колонками: Артикул, Количество).
-                </p>
-                <p>
-                  <strong>Шаг 2.</strong> Загрузите справочник склада (Артикул, Короб, Участок, Количество). Участок может быть «2 этаж» или «БОКС».
-                </p>
-                <p>
-                  <strong>Шаг 3.</strong> Джарвис сопоставит артикулы и покажет, в каких коробах лежит товар и
-                  достаточно ли его для отгрузки.
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
     </div>
   )
 }

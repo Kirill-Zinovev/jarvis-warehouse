@@ -1,0 +1,20 @@
+{
+  "profile": "product-admin",
+  "sourceRoots": ["src"],
+  "locale": "ru-RU",
+  "canonicalMap": "UX-CONTRACT.md",
+  "requiredCapabilities": ["Select/Listbox", "Form", "Scrollbar", "Toast"],
+  "ownership": {
+    "Select/Listbox": "authored"
+  },
+  "requiredCommands": ["typecheck", "lint", "build", "browser"],
+  "commands": {
+    "typecheck": "npx tsc --noEmit",
+    "lint": "npm run lint",
+    "build": "npm run build",
+    "browser": "manual CUA browser flow"
+  },
+  "evidence": {
+    "browserFlow": "design-qa.md"
+  }
+}
