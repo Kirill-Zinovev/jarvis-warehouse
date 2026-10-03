@@ -13,13 +13,18 @@ function normalize(str: string): string {
     .toUpperCase()
 }
 
+/** Marketplace tags appended to shipment SKUs are not part of the warehouse article. */
+function normalizeArticle(str: string): string {
+  return normalize(str).replace(/\((?:OZ|WB)\)$/, '')
+}
+
 /**
  * Aggregate shipment rows: sum quantities for identical articles.
  */
 function aggregateShipments(shipments: ShipmentRow[]): ShipmentRow[] {
   const map = new Map<string, ShipmentRow>()
   for (const s of shipments) {
-    const key = normalize(s.article)
+    const key = normalizeArticle(s.article)
     const existing = map.get(key)
     if (existing) {
       existing.quantity += s.quantity
@@ -36,7 +41,7 @@ function aggregateShipments(shipments: ShipmentRow[]): ShipmentRow[] {
 function aggregateWarehouse(warehouse: WarehouseRow[]): WarehouseRow[] {
   const map = new Map<string, WarehouseRow>()
   for (const w of warehouse) {
-    const key = `${normalize(w.article)}||${normalize(w.section)}||${normalize(w.box)}`
+    const key = `${normalizeArticle(w.article)}||${normalize(w.section)}||${normalize(w.box)}`
     const existing = map.get(key)
     if (existing) {
       existing.quantity += w.quantity
@@ -53,7 +58,7 @@ function aggregateWarehouse(warehouse: WarehouseRow[]): WarehouseRow[] {
 function aggregateResults(results: MatchResult[]): MatchResult[] {
   const map = new Map<string, MatchResult>()
   for (const r of results) {
-    const key = `${normalize(r.article)}||${normalize(r.section)}||${normalize(r.box)}`
+    const key = `${normalizeArticle(r.article)}||${normalize(r.section)}||${normalize(r.box)}`
     const existing = map.get(key)
     if (existing) {
       existing.available += r.available
@@ -110,7 +115,7 @@ export function matchShipments(
   // Step 2: group warehouse by article
   const warehouseMap = new Map<string, WarehouseRow[]>()
   for (const w of aggWarehouse) {
-    const key = normalize(w.article)
+    const key = normalizeArticle(w.article)
     const existing = warehouseMap.get(key) || []
     existing.push(w)
     warehouseMap.set(key, existing)
@@ -120,7 +125,7 @@ export function matchShipments(
   let results: MatchResult[] = []
 
   for (const s of aggShipments) {
-    const key = normalize(s.article)
+    const key = normalizeArticle(s.article)
     const warehouseEntries = warehouseMap.get(key)
 
     if (!warehouseEntries || warehouseEntries.length === 0) {
@@ -172,6 +177,39 @@ export function matchShipments(
   results = aggregateResults(results)
 
   return results
+}
+
+/**
+ * Process direction files in their uploaded order. Each direction sees the
+ * remaining warehouse stock after the previous directions have been allocated.
+ */
+export function matchShipmentDirections(
+  directions: Array<{ id: string; name: string; shipments: ShipmentRow[] }>,
+  warehouse: WarehouseRow[]
+): Array<{ id: string; name: string; results: MatchResult[] }> {
+  const remainingWarehouse = aggregateWarehouse(warehouse)
+
+  return directions.map((direction) => {
+    const results = matchShipments(direction.shipments, remainingWarehouse)
+    const allocatedByPosition = new Map<string, number>()
+
+    for (const result of results) {
+      if (result.allocated <= 0) continue
+      const key = `${normalizeArticle(result.article)}||${normalize(result.section)}||${normalize(result.box)}`
+      allocatedByPosition.set(key, (allocatedByPosition.get(key) ?? 0) + result.allocated)
+    }
+
+    for (const row of remainingWarehouse) {
+      const key = `${normalizeArticle(row.article)}||${normalize(row.section)}||${normalize(row.box)}`
+      const allocated = allocatedByPosition.get(key) ?? 0
+      if (allocated > 0) {
+        row.quantity = Math.max(0, row.quantity - allocated)
+        allocatedByPosition.delete(key)
+      }
+    }
+
+    return { id: direction.id, name: direction.name, results }
+  })
 }
 
 /**

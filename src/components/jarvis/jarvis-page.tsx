@@ -33,7 +33,7 @@ import {
 import { useJarvisStore } from '@/store/jarvis-store'
 import { getMatchSummary } from '@/lib/jarvis-engine'
 import { toast } from 'sonner'
-import type { RawRow, ColumnMap, MatchResult } from '@/types/jarvis'
+import type { RawRow, ColumnMap, MatchResult, ShipmentDirection, DirectionMatchResult } from '@/types/jarvis'
 import { cn } from '@/lib/utils'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -44,6 +44,10 @@ const ARTICLE_NAMES = [
   'артикул',
   'article',
   'арт',
+  'названия строк',
+  'наименования строк',
+  'название строки',
+  'row labels',
   'код',
   'sku',
   'номенклатура',
@@ -267,6 +271,14 @@ function autoWarehouseMap(columns: string[]): ColumnMap {
   }
 }
 
+function directionNameFromFilename(filename: string) {
+  const name = filename
+    .replace(/\.[^.]+$/, '')
+    .replace(/^(?:план(?:[\s_-]+отгрузки)?|заказ|заявка)(?:[\s_-]+)?/i, '')
+    .trim()
+  return name || filename.replace(/\.[^.]+$/, '') || 'Направление'
+}
+
 // ─── File Upload Zone ─────────────────────────────────────────────────────────
 
 function FileUploadZone({
@@ -379,6 +391,87 @@ function FileUploadZone({
             <span className="mt-1 text-[11px] text-[#8b99ad]">или нажмите для выбора · XLSX, XLS, CSV</span>
           </button>
         )}
+      </CardContent>
+    </Card>
+  )
+}
+
+function DirectionUploadZone({ count, onFilesLoad }: { count: number; onFilesLoad: (directions: ShipmentDirection[]) => void }) {
+  const inputRef = useRef<HTMLInputElement>(null)
+  const [dragOver, setDragOver] = useState(false)
+  const [reading, setReading] = useState(false)
+
+  const handleFiles = useCallback(async (files: FileList | File[]) => {
+    const selected = Array.from(files)
+    if (!selected.length || reading) return
+
+    setReading(true)
+    const loaded: ShipmentDirection[] = []
+    for (const file of selected) {
+      try {
+        const { rows, columns } = await readFile(file)
+        if (!rows.length) {
+          toast.error(`${file.name}: файл пуст или не содержит таблицу`)
+          continue
+        }
+        loaded.push({
+          id: globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+          name: directionNameFromFilename(file.name),
+          file: { name: file.name, rows, columns, mapped: false },
+          columns: autoShipmentMap(columns),
+        })
+      } catch {
+        toast.error(`${file.name}: не удалось прочитать Excel или CSV`)
+      }
+    }
+    if (loaded.length) {
+      onFilesLoad(loaded)
+      toast.success(`Добавлено направлений: ${loaded.length}`)
+    }
+    setReading(false)
+  }, [onFilesLoad, reading])
+
+  return (
+    <Card className={cn('border-[#dfe6ef] bg-white shadow-none transition-colors', dragOver && 'border-[#e11d48] bg-[#fff7f8] ring-2 ring-[#e11d48]/10')}>
+      <CardContent className="p-3 sm:p-4">
+        <input
+          ref={inputRef}
+          type="file"
+          accept=".xlsx,.xls,.csv"
+          multiple
+          className="hidden"
+          onChange={(event) => {
+            if (event.target.files?.length) void handleFiles(event.target.files)
+            event.target.value = ''
+          }}
+        />
+        <div className="mb-3 flex items-center gap-3">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-[#fff0f3] text-[#d61f45]"><FileSpreadsheet className="h-[18px] w-[18px]" /></span>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-bold text-[#15274f]">Заявки по направлениям</p>
+            <p className="mt-0.5 text-[11px] text-[#7a8aa2]">Загрузите несколько Excel/CSV. Имя файла станет названием направления.</p>
+          </div>
+          {count > 0 && <span className="shrink-0 rounded-full bg-[#f3f6fa] px-2.5 py-1 text-[11px] font-bold text-[#53647e]">{count} загружено</span>}
+        </div>
+        <button
+          type="button"
+          aria-label="Добавить файлы направлений"
+          disabled={reading}
+          onClick={() => inputRef.current?.click()}
+          onDragEnter={(event) => { event.preventDefault(); setDragOver(true) }}
+          onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = 'copy'; setDragOver(true) }}
+          onDragLeave={(event) => { if (event.currentTarget === event.target) setDragOver(false) }}
+          onDrop={(event) => {
+            event.preventDefault()
+            setDragOver(false)
+            if (event.dataTransfer.files.length) void handleFiles(event.dataTransfer.files)
+          }}
+          className="flex h-24 w-full flex-col items-center justify-center rounded-md border border-dashed border-[#e9a7b3] bg-[#fff9fa] text-center transition-colors hover:border-[#e11d48] hover:bg-[#fff4f6] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#e11d48]/35 disabled:cursor-wait disabled:opacity-60"
+        >
+          {reading ? <RotateCcw className="mb-2 h-5 w-5 animate-spin text-[#e11d48]" /> : <Upload className="mb-2 h-5 w-5 text-[#e11d48]" />}
+          <span className="text-xs font-bold text-[#d61f45]">{reading ? 'Читаю файлы…' : 'Добавить файлы направлений'}</span>
+          <span className="mt-1 text-[11px] text-[#7a8aa2]">Новые заявки добавятся в конец очереди распределения</span>
+        </button>
       </CardContent>
     </Card>
   )
@@ -836,7 +929,7 @@ function statusLabel(summary: ArticleSummary) {
   return 'Не найден'
 }
 
-async function exportResultsExcel(results: MatchResult[]) {
+async function exportResultsExcel(results: MatchResult[], reportName?: string) {
   const XLSX = await import('xlsx-js-style')
   const wb = XLSX.utils.book_new()
   const summaries = buildArticleSummaries(results)
@@ -1033,8 +1126,12 @@ async function exportResultsExcel(results: MatchResult[]) {
   writeSheet('Запасные варианты', resultHeaders, makeResultRows(spareResults))
   writeSheet('Все результаты', resultHeaders, makeResultRows(results))
 
-  XLSX.writeFile(wb, `jarvis-result-${new Date().toISOString().slice(0, 10)}.xlsx`)
-  toast.success('Excel готов: 6 листов с подбором, запасом и расхождениями')
+  const safeName = (reportName || `jarvis-result-${new Date().toISOString().slice(0, 10)}`)
+    .replace(/[<>:"/\\|?*]+/g, '-')
+    .replace(/\s+/g, '-')
+    .slice(0, 120)
+  XLSX.writeFile(wb, `${safeName}.xlsx`)
+  toast.success(reportName ? `Отчёт «${reportName}» скачан` : 'Excel готов: 6 листов с подбором, запасом и расхождениями')
 }
 
 async function exportResultsCSV(results: MatchResult[]) {
@@ -1079,8 +1176,64 @@ async function exportResultsCSV(results: MatchResult[]) {
 
 // ─── Main Jarvis Page ────────────────────────────────────────────────────────
 
+function DirectionResults({ directions, onNewBuild }: { directions: DirectionMatchResult[]; onNewBuild: () => void }) {
+  const [activeDirectionId, setActiveDirectionId] = useState(directions[0]?.id ?? '')
+  const activeDirection = directions.find((direction) => direction.id === activeDirectionId) ?? directions[0]
+  const date = new Date().toISOString().slice(0, 10)
+
+  return (
+    <motion.div key="direction-results" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }} className="space-y-5">
+      <div className="flex flex-col gap-4 border-b border-[#dfe6ef] pb-5 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#8190a7]">Склад / Отгрузка / Направления</p>
+          <h1 className="text-3xl font-extrabold leading-none tracking-[-0.05em] text-[#10204a]">Отчёты по направлениям</h1>
+          <p className="mt-3 max-w-2xl text-sm leading-6 text-[#667894]">Каждый Excel содержит подбор только для своего направления. Общий остаток распределён по порядку списка.</p>
+        </div>
+        <Button variant="outline" size="sm" onClick={onNewBuild} className="border-[#dfe6ef] bg-white text-[#53647e] hover:bg-[#f7f9fc]"><RotateCcw className="mr-1.5 h-4 w-4" />Новая сборка</Button>
+      </div>
+
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+        {directions.map((direction, index) => {
+          const summary = getMatchSummary(direction.results)
+          const selected = activeDirection?.id === direction.id
+          const reportName = `jarvis-${index + 1}-${direction.name || `napravlenie-${index + 1}`}-${date}`
+          return (
+            <div key={direction.id} className={cn('min-w-0 rounded-lg border bg-white p-3 transition-colors', selected ? 'border-[#e98c9e] ring-1 ring-[#f8d7de]' : 'border-[#dfe6ef]')}>
+              <button type="button" onClick={() => setActiveDirectionId(direction.id)} aria-pressed={selected} className="w-full rounded text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#e11d48]/30">
+                <span className="flex items-center justify-between gap-3">
+                  <span className="min-w-0 truncate text-sm font-bold text-[#15274f]">{index + 1}. {direction.name}</span>
+                  <span className="shrink-0 text-[11px] font-semibold text-[#71819a]">{summary.totalArticles} арт.</span>
+                </span>
+                <span className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-[#71819a]">
+                  <span className="text-[#178956]">Найдено {summary.foundArticles}</span>
+                  <span className="text-[#d7780d]">Не найдено {summary.notFoundArticles}</span>
+                  <span className="text-[#cf2346]">Нехватка {summary.shortageArticles}</span>
+                </span>
+              </button>
+              <Button variant="outline" size="sm" onClick={() => void exportResultsExcel(direction.results, reportName)} className="mt-3 h-8 w-full border-[#f0c1ca] bg-[#fff9fa] text-xs text-[#d61f45] hover:bg-[#fff0f3]"><Download className="mr-1.5 h-3.5 w-3.5" />Скачать Excel для {direction.name || 'направления'}</Button>
+            </div>
+          )
+        })}
+      </div>
+
+      {activeDirection && <div className="space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#e4eaf1] pb-3">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#8190a7]">Выбранное направление</p>
+            <h2 className="mt-1 text-lg font-extrabold text-[#10204a]">{activeDirection.name}</h2>
+          </div>
+          <Button variant="outline" size="sm" onClick={() => void exportResultsExcel(activeDirection.results, `jarvis-${activeDirection.name}-${date}`)} className="border-[#dfe6ef] bg-white text-[#d61f45] hover:border-[#f0a4b3] hover:bg-[#fff6f8]"><Download className="mr-1.5 h-4 w-4" />Экспорт этого направления</Button>
+        </div>
+        <ResultsTable results={activeDirection.results} />
+      </div>}
+    </motion.div>
+  )
+}
+
 export function JarvisPage() {
   const {
+    workflowMode,
+    setWorkflowMode,
     shipmentFile,
     setShipmentFile,
     warehouseFile,
@@ -1089,16 +1242,24 @@ export function JarvisPage() {
     setShipmentColumns,
     warehouseColumns,
     setWarehouseColumns,
+    directions,
+    addDirections,
+    setDirectionName,
+    setDirectionColumns,
+    removeDirection,
     results,
     hasRun,
+    directionResults,
+    hasDirectionRun,
     runMatch,
+    runDirectionMatch,
     reset,
   } = useJarvisStore()
 
   const [showShipmentPreview, setShowShipmentPreview] = useState(false)
   const [showWarehousePreview, setShowWarehousePreview] = useState(false)
 
-  const canRun =
+  const canRunSingle =
     shipmentFile &&
     warehouseFile &&
     shipmentColumns?.article &&
@@ -1106,6 +1267,17 @@ export function JarvisPage() {
     warehouseColumns?.article &&
     warehouseColumns?.box &&
     warehouseColumns?.quantity
+
+  const canRunDirections =
+    directions.length > 0 &&
+    directions.every((direction) => direction.name.trim() && direction.columns.article && direction.columns.quantity) &&
+    warehouseFile &&
+    warehouseColumns?.article &&
+    warehouseColumns?.box &&
+    warehouseColumns?.quantity
+
+  const canRun = workflowMode === 'directions' ? canRunDirections : canRunSingle
+  const hasCurrentRun = workflowMode === 'directions' ? hasDirectionRun : hasRun
 
   function handleShipmentLoad(name: string, rows: RawRow[], columns: string[]) {
     setShipmentFile({ name, rows, columns, mapped: false })
@@ -1117,10 +1289,33 @@ export function JarvisPage() {
     setWarehouseColumns(autoWarehouseMap(columns))
   }
 
+  const handleDirectionFilesLoad = useCallback((newDirections: ShipmentDirection[]) => {
+    addDirections(newDirections)
+  }, [addDirections])
+
+  const runCurrentWorkflow = () => {
+    if (workflowMode === 'directions') {
+      runDirectionMatch()
+      toast.success(`Сформировано отчётов: ${directions.length}`)
+      return
+    }
+    runMatch()
+  }
+
   return (
     <div className="jarvis-shell mx-auto w-full max-w-[1280px] space-y-6">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[#dfe6ef] bg-white p-3">
+        <div>
+          <p className="text-xs font-bold text-[#344666]">Режим подбора</p>
+          <p className="mt-0.5 text-[11px] text-[#8190a7]">Можно собрать одну заявку или распределить общий остаток по направлениям</p>
+        </div>
+        <div className="flex rounded-md border border-[#dfe6ef] bg-[#f7f9fc] p-1" role="group" aria-label="Режим подбора">
+          <button type="button" aria-pressed={workflowMode === 'single'} onClick={() => setWorkflowMode('single')} className={cn('rounded px-3 py-2 text-xs font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#e11d48]/30', workflowMode === 'single' ? 'bg-white text-[#d61f45] shadow-sm' : 'text-[#61718a] hover:text-[#15274f]')}>Одна заявка</button>
+          <button type="button" aria-pressed={workflowMode === 'directions'} onClick={() => setWorkflowMode('directions')} className={cn('rounded px-3 py-2 text-xs font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#e11d48]/30', workflowMode === 'directions' ? 'bg-white text-[#d61f45] shadow-sm' : 'text-[#61718a] hover:text-[#15274f]')}>Несколько направлений</button>
+        </div>
+      </div>
       <AnimatePresence mode="wait">
-        {!hasRun ? (
+        {!hasCurrentRun ? (
           <motion.div
             key="upload"
             initial={{ opacity: 0 }}
@@ -1131,8 +1326,8 @@ export function JarvisPage() {
             <div className="flex flex-col gap-4 border-b border-[#dfe6ef] pb-5 sm:flex-row sm:items-end sm:justify-between">
               <div>
                 <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#8190a7]">Склад / Отгрузка</p>
-                <h1 className="text-[clamp(1.75rem,3vw,2.7rem)] font-extrabold leading-none tracking-[-0.05em] text-[#10204a]">Подбор коробов для отгрузки</h1>
-                <p className="mt-3 max-w-2xl text-sm leading-6 text-[#667894]">Загрузите план отгрузки и остатки склада, сопоставьте артикулы и получите точный список коробов.</p>
+                <h1 className="text-[clamp(1.75rem,3vw,2.7rem)] font-extrabold leading-none tracking-[-0.05em] text-[#10204a]">{workflowMode === 'directions' ? 'Подбор коробов по направлениям' : 'Подбор коробов для отгрузки'}</h1>
+                <p className="mt-3 max-w-2xl text-sm leading-6 text-[#667894]">{workflowMode === 'directions' ? 'Загрузите общий остаток и Excel-файлы заявок. Jarvis подготовит отдельный отчёт для каждого направления и распределит товар без повторного учёта.' : 'Загрузите план отгрузки и остатки склада, сопоставьте артикулы и получите точный список коробов.'}</p>
               </div>
               <div className="flex shrink-0 items-center gap-2 self-start rounded-full border border-[#d8e0e9] bg-white px-3 py-2 text-xs font-medium text-[#63738c] sm:self-auto">
                 <span className="h-2 w-2 rounded-full bg-[#20ad70]" />
@@ -1142,7 +1337,7 @@ export function JarvisPage() {
 
             <div className="grid grid-cols-1 items-center gap-3 rounded-lg border border-[#dfe6ef] bg-white px-4 py-3 sm:grid-cols-3 sm:gap-5">
               {[
-                ['01', 'Загрузка файлов', 'План и остатки'],
+                ['01', 'Загрузка файлов', workflowMode === 'directions' ? 'Заявки и общий остаток' : 'План и остатки'],
                 ['02', 'Сопоставление', 'Артикулы и короба'],
                 ['03', 'Результат', 'Список для отбора'],
               ].map(([number, title, caption], index) => (
@@ -1159,23 +1354,42 @@ export function JarvisPage() {
 
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
               <div className="space-y-3">
-                <FileUploadZone
-                  title="План отгрузки"
-                  description="Файл с артикулами и количеством для отгрузки"
-                  file={shipmentFile ? { name: shipmentFile.name, rows: shipmentFile.rows } : null}
-                  onFileLoad={handleShipmentLoad}
-                  icon={FileSpreadsheet}
-                />
-                {shipmentFile && (
-                  <div className="rounded-md border border-[#dfe6ef] bg-white p-3">
-                    <ColumnMapper file={shipmentFile} mapping={shipmentColumns} setMapping={setShipmentColumns} type="shipment" />
-                    <Button variant="ghost" size="sm" className="mt-2 h-7 px-1 text-[11px] text-[#60718b] hover:bg-transparent hover:text-[#d61f45]" onClick={() => setShowShipmentPreview(!showShipmentPreview)}>
-                      <Eye className="mr-1 h-3.5 w-3.5" />
-                      {showShipmentPreview ? 'Скрыть предпросмотр' : 'Показать предпросмотр'}
-                    </Button>
-                    {showShipmentPreview && <DataPreview rows={shipmentFile.rows} columns={shipmentFile.columns} />}
-                  </div>
-                )}
+                {workflowMode === 'directions' ? <>
+                  <DirectionUploadZone count={directions.length} onFilesLoad={handleDirectionFilesLoad} />
+                  <p className="rounded-md border border-[#e4eaf1] bg-white px-3 py-2 text-[11px] leading-5 text-[#71819a]">Порядок в списке задаёт приоритет: остаток распределяется сверху вниз. Измените названия направлений перед запуском, если нужно.</p>
+                  {directions.map((direction, index) => (
+                    <div key={direction.id} className="min-w-0 rounded-lg border border-[#dfe6ef] bg-white p-3 sm:p-4">
+                      <div className="mb-3 flex items-start gap-3">
+                        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#fff0f3] text-xs font-bold text-[#d61f45]">{index + 1}</span>
+                        <div className="min-w-0 flex-1">
+                          <label htmlFor={`direction-name-${direction.id}`} className="text-[11px] font-semibold text-[#71819a]">Название направления</label>
+                          <input id={`direction-name-${direction.id}`} aria-label={`Название направления ${index + 1}`} value={direction.name} onChange={(event) => setDirectionName(direction.id, event.target.value)} className="mt-1 h-9 w-full rounded-md border border-[#dfe6ef] bg-[#fbfcfe] px-3 text-sm font-semibold text-[#15274f] outline-none transition focus:border-[#e11d48] focus:ring-2 focus:ring-[#e11d48]/10" />
+                          <p className="mt-1 truncate text-[10px] text-[#8b99ad]">{direction.file.name} · {direction.file.rows.length.toLocaleString('ru-RU')} строк</p>
+                        </div>
+                        <Button type="button" variant="ghost" size="icon" aria-label={`Удалить направление ${direction.name}`} onClick={() => removeDirection(direction.id)} className="h-8 w-8 shrink-0 text-[#8190a7] hover:bg-[#fff0f3] hover:text-[#d61f45]"><Trash2 className="h-4 w-4" /></Button>
+                      </div>
+                      <ColumnMapper file={direction.file} mapping={direction.columns} setMapping={(columns) => setDirectionColumns(direction.id, columns)} type="shipment" />
+                    </div>
+                  ))}
+                </> : <>
+                  <FileUploadZone
+                    title="План отгрузки"
+                    description="Файл с артикулами и количеством для отгрузки"
+                    file={shipmentFile ? { name: shipmentFile.name, rows: shipmentFile.rows } : null}
+                    onFileLoad={handleShipmentLoad}
+                    icon={FileSpreadsheet}
+                  />
+                  {shipmentFile && (
+                    <div className="rounded-md border border-[#dfe6ef] bg-white p-3">
+                      <ColumnMapper file={shipmentFile} mapping={shipmentColumns} setMapping={setShipmentColumns} type="shipment" />
+                      <Button variant="ghost" size="sm" className="mt-2 h-7 px-1 text-[11px] text-[#60718b] hover:bg-transparent hover:text-[#d61f45]" onClick={() => setShowShipmentPreview(!showShipmentPreview)}>
+                        <Eye className="mr-1 h-3.5 w-3.5" />
+                        {showShipmentPreview ? 'Скрыть предпросмотр' : 'Показать предпросмотр'}
+                      </Button>
+                      {showShipmentPreview && <DataPreview rows={shipmentFile.rows} columns={shipmentFile.columns} />}
+                    </div>
+                  )}
+                </>}
               </div>
 
               <div className="space-y-3">
@@ -1200,7 +1414,7 @@ export function JarvisPage() {
             </div>
 
             <div className="flex flex-col items-center justify-center gap-3 border-y border-[#e4eaf1] py-5 sm:flex-row sm:gap-5">
-              <div className="flex items-center gap-2 text-xs font-semibold text-[#6d7d95]"><FileSpreadsheet className="h-4 w-4 text-[#8292aa]" /> План отгрузки</div>
+              <div className="flex items-center gap-2 text-xs font-semibold text-[#6d7d95]"><FileSpreadsheet className="h-4 w-4 text-[#8292aa]" /> {workflowMode === 'directions' ? 'Заявки по направлениям' : 'План отгрузки'}</div>
               <ArrowRight className="hidden h-4 w-4 text-[#b4c0cf] sm:block" />
               <div className="flex items-center gap-2 rounded-full bg-[#fff0f3] px-3 py-1.5 text-xs font-bold text-[#d61f45]"><Cpu className="h-4 w-4" /> Сопоставление</div>
               <ArrowRight className="hidden h-4 w-4 text-[#b4c0cf] sm:block" />
@@ -1208,19 +1422,21 @@ export function JarvisPage() {
             </div>
 
             <div className="flex flex-col items-center gap-3">
-              <Button size="lg" disabled={!canRun} onClick={runMatch} className="h-12 min-w-64 rounded-md bg-[#e11d48] px-8 text-sm font-bold text-white shadow-[0_12px_24px_-12px_rgba(225,29,72,0.7)] hover:bg-[#c9183e] focus-visible:ring-[#e11d48]/30">
+              <Button size="lg" disabled={!canRun} onClick={runCurrentWorkflow} className="h-12 min-w-64 rounded-md bg-[#e11d48] px-8 text-sm font-bold text-white shadow-[0_12px_24px_-12px_rgba(225,29,72,0.7)] hover:bg-[#c9183e] focus-visible:ring-[#e11d48]/30">
                 <Zap className="mr-1.5 h-4 w-4" />
-                Собрать данные
+                {workflowMode === 'directions' ? 'Распределить остаток' : 'Собрать данные'}
                 <ArrowRight className="ml-1 h-4 w-4" />
               </Button>
-              {!canRun && (shipmentFile || warehouseFile) && <p className="text-center text-xs text-[#a06b78]">Загрузите оба файла и настройте колонки для запуска</p>}
+              {!canRun && (shipmentFile || warehouseFile || directions.length > 0) && <p className="text-center text-xs text-[#a06b78]">{workflowMode === 'directions' ? 'Добавьте заявки, укажите названия направлений и настройте колонки вместе с общими остатками' : 'Загрузите оба файла и настройте колонки для запуска'}</p>}
             </div>
 
             <div className="flex items-start gap-3 border-t border-[#e4eaf1] pt-5 text-xs text-[#71819a]">
               <HelpCircle className="mt-0.5 h-4 w-4 shrink-0 text-[#8493aa]" />
-              <p className="max-w-3xl leading-5"><span className="font-bold text-[#344666]">Как работает Jarvis.</span> Он сопоставляет артикул с остатками по коробам, сохраняет участок (`2 этаж` или `БОКС`) и распределяет нужное количество по доступным коробам.</p>
+              <p className="max-w-3xl leading-5"><span className="font-bold text-[#344666]">Как работает Jarvis.</span> {workflowMode === 'directions' ? 'Он распределяет общий запас по порядку направлений: сначала обслуживается первая заявка, затем следующая с учётом уже выделенного товара.' : 'Он сопоставляет артикул с остатками по коробам, сохраняет участок (`2 этаж` или `БОКС`) и распределяет нужное количество по доступным коробам.'}</p>
             </div>
           </motion.div>
+        ) : workflowMode === 'directions' ? (
+          <DirectionResults key="direction-results" directions={directionResults} onNewBuild={reset} />
         ) : (
           <motion.div key="results" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }} className="space-y-5">
             <div className="flex flex-col gap-4 border-b border-[#dfe6ef] pb-5 sm:flex-row sm:items-end sm:justify-between">

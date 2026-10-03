@@ -3,7 +3,7 @@
 ## Product context
 
 - Audience: Russian warehouse operators.
-- Primary jobs: match shipment articles to warehouse boxes; subtract OZ/WB deletion reports from the current stock base.
+- Primary jobs: match shipment articles to warehouse boxes; distribute one shared warehouse balance across ordered direction files without double allocation; subtract OZ/WB deletion reports from the current stock base.
 - Target market(s): Russian warehouse operations.
 - Active locales: Russian (`ru-RU`).
 - Language/content register: Direct operational Russian; source article and box codes are preserved after normalization for matching.
@@ -35,7 +35,7 @@
 | Capability | Canonical owner | Source of truth | Allowed variants | Verification |
 |---|---|---|---|---|
 | Select/Listbox | `src/components/ui/select.tsx` via the shared `ColumnSelect` adapter in Pasha and direct use in Jarvis | Shared primitive / screen behavior | authored | keyboard + popup |
-| Form | Upload and mapping sections in `jarvis-page.tsx` and `pasha-page.tsx` | Current workflow | shipment / warehouse / deletion | browser flow |
+| Form | Upload and mapping sections in `jarvis-page.tsx` and `pasha-page.tsx` | Current workflow | shipment / ordered directions / warehouse / deletion | browser flow |
 | Scrollbar | `.jarvis-app` baseline in `src/app/globals.css` | Runtime CSS | table inner scroll | computed style + browser |
 | Toast | `src/components/ui/sonner.tsx` / Sonner | Existing app primitive | success / warning / error | browser flow |
 
@@ -61,6 +61,7 @@
 |---|---|---|---|---|---|---|---|
 | Upload/background job | file picker or drop zone | parsing state in handler | file row and mappings | success toast | preserve other screen state and show error toast | picker control remains available | Current task |
 | Match / update | primary action | button disabled by browser handler | result ledger | success toast | missing mappings/files shown as guidance | result is visible below action | Current task |
+| Direction allocation | ordered multi-file upload and shared stock | files parsed in list order | one downloadable Excel per direction | summary and allocation status per direction | fix mappings, rename or remove a direction, then rerun | first direction remains first priority | Current task decision, 2026-10-03 |
 | Search | typing in result toolbar | local filtering | filtered ledger | immediate | clear button restores all rows | input keeps focus | Current task |
 | Export | Excel/CSV button | local workbook generation | browser download | success toast | source result remains intact | button remains available | Current task |
 | Cancel/back | protocol rail or reset | immediate | selected mode / empty workflow | no confirmation for local reset | no destructive external mutation | selected protocol stays visible | Current task |
@@ -84,9 +85,9 @@
 ## Async and resilience
 
 - Mutation default: local, synchronous data transformation after file parsing.
-- Idempotency and duplicate-submit policy: reset clears local inputs/results; primary action requires all mappings and files.
+- Idempotency and duplicate-submit policy: reset clears local inputs/results; primary action requires all mappings and files. Direction runs always recompute from the original uploaded stock, then consume it sequentially in the displayed upload order.
 - Offline/read-stale/write behavior: all parsing and matching are local; no network data dependency.
-- Long-running progress and return path: parsing large workbooks keeps the screen intact; result is shown when complete.
+- Long-running progress and return path: parsing large workbooks keeps the screen intact; result is shown when complete. Multiple direction files are parsed sequentially and kept in the shared local workflow state.
 - Dialog/form preservation and retry after failure: errors do not clear successfully loaded files.
 
 ## Validation

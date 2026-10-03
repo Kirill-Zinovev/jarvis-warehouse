@@ -33,6 +33,21 @@ export interface MatchResult {
   remainingNeed: number
 }
 
+/** Uploaded order for a shipment direction. Earlier directions consume stock first. */
+export interface ShipmentDirection {
+  id: string
+  name: string
+  file: FileData
+  columns: ColumnMap
+}
+
+/** Results calculated for one direction against the shared, progressively reduced stock. */
+export interface DirectionMatchResult {
+  id: string
+  name: string
+  results: MatchResult[]
+}
+
 /** File upload state */
 export interface FileData {
   name: string
