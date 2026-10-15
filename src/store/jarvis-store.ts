@@ -33,6 +33,7 @@ interface JarvisState {
   // Shipment files processed in upload order against shared stock.
   directions: ShipmentDirection[]
   addDirections: (directions: ShipmentDirection[]) => void
+  moveDirection: (id: string, targetIndex: number) => void
   setDirectionName: (id: string, name: string) => void
   setDirectionColumns: (id: string, columns: ColumnMap) => void
   removeDirection: (id: string) => void
@@ -122,6 +123,17 @@ export const useJarvisStore = create<JarvisState>((set, get) => ({
     directionResults: [],
     hasDirectionRun: false,
   })),
+  moveDirection: (id, targetIndex) => set((state) => {
+    const sourceIndex = state.directions.findIndex((direction) => direction.id === id)
+    if (sourceIndex < 0 || targetIndex < 0 || targetIndex >= state.directions.length || sourceIndex === targetIndex) {
+      return state
+    }
+
+    const directions = [...state.directions]
+    const [direction] = directions.splice(sourceIndex, 1)
+    directions.splice(targetIndex, 0, direction)
+    return { directions, directionResults: [], hasDirectionRun: false }
+  }),
   setDirectionName: (id, name) => set((state) => ({
     directions: state.directions.map((direction) => direction.id === id ? { ...direction, name } : direction),
     directionResults: [],

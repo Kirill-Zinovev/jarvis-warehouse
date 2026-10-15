@@ -18,6 +18,8 @@ import {
   Eye,
   Trash2,
   ArrowRight,
+  ArrowUp,
+  ArrowDown,
   Cpu,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -35,6 +37,7 @@ import { getMatchSummary } from '@/lib/jarvis-engine'
 import { toast } from 'sonner'
 import type { RawRow, ColumnMap, MatchResult, ShipmentDirection, DirectionMatchResult } from '@/types/jarvis'
 import { cn } from '@/lib/utils'
+import { GoogleSheetsPublish } from '@/components/jarvis/google-sheets-publish'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -225,7 +228,10 @@ function findGenericHeaderRow(grid: GridRow[]): number {
 async function readFile(file: File): Promise<{ rows: RawRow[]; columns: string[] }> {
   const XLSX = await import('xlsx')
   const arrayBuffer = await file.arrayBuffer()
-  const workbook = XLSX.read(arrayBuffer, { type: 'array' })
+  const isCsv = /\.csv$/i.test(file.name)
+  const workbook = isCsv
+    ? XLSX.read(decodeCsvText(arrayBuffer), { type: 'string' })
+    : XLSX.read(arrayBuffer, { type: 'array' })
   let fallback: { rows: RawRow[]; columns: string[] } = { rows: [], columns: [] }
 
   for (const sheetName of workbook.SheetNames) {
@@ -253,6 +259,14 @@ async function readFile(file: File): Promise<{ rows: RawRow[]; columns: string[]
   }
 
   return fallback
+}
+
+function decodeCsvText(buffer: ArrayBuffer): string {
+  try {
+    return new TextDecoder('utf-8', { fatal: true }).decode(buffer)
+  } catch {
+    return new TextDecoder('windows-1251').decode(buffer)
+  }
 }
 
 function autoShipmentMap(columns: string[]): ColumnMap {
@@ -1176,7 +1190,7 @@ async function exportResultsCSV(results: MatchResult[]) {
 
 // ─── Main Jarvis Page ────────────────────────────────────────────────────────
 
-function DirectionResults({ directions, onNewBuild }: { directions: DirectionMatchResult[]; onNewBuild: () => void }) {
+function DirectionResults({ directions, sourceDirections, onNewBuild }: { directions: DirectionMatchResult[]; sourceDirections: ShipmentDirection[]; onNewBuild: () => void }) {
   const [activeDirectionId, setActiveDirectionId] = useState(directions[0]?.id ?? '')
   const activeDirection = directions.find((direction) => direction.id === activeDirectionId) ?? directions[0]
   const date = new Date().toISOString().slice(0, 10)
@@ -1216,6 +1230,8 @@ function DirectionResults({ directions, onNewBuild }: { directions: DirectionMat
         })}
       </div>
 
+      <GoogleSheetsPublish directions={directions} sourceDirections={sourceDirections} />
+
       {activeDirection && <div className="space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#e4eaf1] pb-3">
           <div>
@@ -1244,6 +1260,7 @@ export function JarvisPage() {
     setWarehouseColumns,
     directions,
     addDirections,
+    moveDirection,
     setDirectionName,
     setDirectionColumns,
     removeDirection,
@@ -1356,7 +1373,7 @@ export function JarvisPage() {
               <div className="space-y-3">
                 {workflowMode === 'directions' ? <>
                   <DirectionUploadZone count={directions.length} onFilesLoad={handleDirectionFilesLoad} />
-                  <p className="rounded-md border border-[#e4eaf1] bg-white px-3 py-2 text-[11px] leading-5 text-[#71819a]">Порядок в списке задаёт приоритет: остаток распределяется сверху вниз. Измените названия направлений перед запуском, если нужно.</p>
+                  <p className="rounded-md border border-[#e4eaf1] bg-white px-3 py-2 text-[11px] leading-5 text-[#71819a]">Порядок в списке задаёт приоритет: остаток распределяется сверху вниз. Перемещайте направления стрелками; при необходимости измените их названия.</p>
                   {directions.map((direction, index) => (
                     <div key={direction.id} className="min-w-0 rounded-lg border border-[#dfe6ef] bg-white p-3 sm:p-4">
                       <div className="mb-3 flex items-start gap-3">
@@ -1365,6 +1382,10 @@ export function JarvisPage() {
                           <label htmlFor={`direction-name-${direction.id}`} className="text-[11px] font-semibold text-[#71819a]">Название направления</label>
                           <input id={`direction-name-${direction.id}`} aria-label={`Название направления ${index + 1}`} value={direction.name} onChange={(event) => setDirectionName(direction.id, event.target.value)} className="mt-1 h-9 w-full rounded-md border border-[#dfe6ef] bg-[#fbfcfe] px-3 text-sm font-semibold text-[#15274f] outline-none transition focus:border-[#e11d48] focus:ring-2 focus:ring-[#e11d48]/10" />
                           <p className="mt-1 truncate text-[10px] text-[#8b99ad]">{direction.file.name} · {direction.file.rows.length.toLocaleString('ru-RU')} строк</p>
+                        </div>
+                        <div className="flex shrink-0 flex-col gap-1">
+                          <Button type="button" variant="ghost" size="icon" aria-label={`Переместить ${direction.name} выше`} title="Выше — больший приоритет" disabled={index === 0} onClick={() => moveDirection(direction.id, index - 1)} className="h-7 w-7 text-[#71819a] hover:bg-[#f1f5f9] hover:text-[#15274f] disabled:opacity-35"><ArrowUp className="h-4 w-4" /></Button>
+                          <Button type="button" variant="ghost" size="icon" aria-label={`Переместить ${direction.name} ниже`} title="Ниже — меньший приоритет" disabled={index === directions.length - 1} onClick={() => moveDirection(direction.id, index + 1)} className="h-7 w-7 text-[#71819a] hover:bg-[#f1f5f9] hover:text-[#15274f] disabled:opacity-35"><ArrowDown className="h-4 w-4" /></Button>
                         </div>
                         <Button type="button" variant="ghost" size="icon" aria-label={`Удалить направление ${direction.name}`} onClick={() => removeDirection(direction.id)} className="h-8 w-8 shrink-0 text-[#8190a7] hover:bg-[#fff0f3] hover:text-[#d61f45]"><Trash2 className="h-4 w-4" /></Button>
                       </div>
@@ -1436,7 +1457,7 @@ export function JarvisPage() {
             </div>
           </motion.div>
         ) : workflowMode === 'directions' ? (
-          <DirectionResults key="direction-results" directions={directionResults} onNewBuild={reset} />
+          <DirectionResults key="direction-results" directions={directionResults} sourceDirections={directions} onNewBuild={reset} />
         ) : (
           <motion.div key="results" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }} className="space-y-5">
             <div className="flex flex-col gap-4 border-b border-[#dfe6ef] pb-5 sm:flex-row sm:items-end sm:justify-between">
