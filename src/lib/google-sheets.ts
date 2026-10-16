@@ -2,6 +2,7 @@ import type { DirectionMatchResult, MatchResult, ShipmentDirection } from '@/typ
 
 export const JARVIS_SPREADSHEET_ID = '1_Q4b5ClVDpl0Q6UPmKZ_NKWv1ecAQU42YrGDkHZRrWU'
 export const JARVIS_SPREADSHEET_URL = `https://docs.google.com/spreadsheets/d/${JARVIS_SPREADSHEET_ID}/edit`
+export const JARVIS_OUTPUT_FOLDER_URL = 'https://drive.google.com/drive/folders/1rqR7_DTNGRm4_xMViTkZeK6J6xbCDibv'
 export const APPS_SCRIPT_SOURCE_URL = '/jarvis-apps-script.gs'
 
 export interface DirectionExportInput {

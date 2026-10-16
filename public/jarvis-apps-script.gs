@@ -1,4 +1,5 @@
-const JARVIS_SPREADSHEET_ID = '1_Q4b5ClVDpl0Q6UPmKZ_NKWv1ecAQU42YrGDkHZRrWU'
+const JARVIS_TEMPLATE_SPREADSHEET_ID = '1_Q4b5ClVDpl0Q6UPmKZ_NKWv1ecAQU42YrGDkHZRrWU'
+const JARVIS_OUTPUT_FOLDER_ID = '1rqR7_DTNGRm4_xMViTkZeK6J6xbCDibv'
 const JARVIS_APP_URL = 'https://jarvis-warehouse.zinovevkirill234.workers.dev'
 const JARVIS_TOKEN_PROPERTY = 'JARVIS_ACCESS_TOKEN_V1'
 const JARVIS_HISTORY_PREFIX = 'JARVIS_RUN_V1_'
@@ -45,78 +46,83 @@ function doPost(event) {
     const payloadText = String(parameters.payload || '')
     if (!payloadText || payloadText.length > 5_000_000) throw new Error('Пустой или слишком большой запрос.')
     const payload = JSON.parse(payloadText)
-    const spreadsheet = SpreadsheetApp.openById(JARVIS_SPREADSHEET_ID)
+    const templateSpreadsheet = SpreadsheetApp.openById(JARVIS_TEMPLATE_SPREADSHEET_ID)
 
     if (payload.action === 'test') {
-      return resultPage_(true, 'Подключение работает', 'Jarvis получил доступ к таблице «' + spreadsheet.getName() + '».', '')
+      return resultPage_(true, 'Подключение работает', 'Jarvis получил доступ к шаблону «' + templateSpreadsheet.getName() + '».', '')
     }
     if (payload.action !== 'publish') throw new Error('Неизвестная команда Jarvis.')
 
-    const result = publish_(spreadsheet, payload)
+    const result = publish_(templateSpreadsheet, payload)
     if (result.duplicate) {
-      const link = result.summarySheetId
-        ? JARVIS_SPREADSHEET_URL_() + '#gid=' + result.summarySheetId
-        : JARVIS_SPREADSHEET_URL_()
-      return resultPage_(true, 'Этот запуск уже записан', 'Повторные вкладки не создавались.', link)
+      return resultPage_(true, 'Эта отправка уже обработана', 'Повторная таблица не создавалась.', result.summaryUrl)
     }
 
-    return resultPage_(true, 'Готово — отчёт записан', 'Создано вкладок направлений: ' + result.reportCount + ', и сводка «' + result.summaryTitle + '».', result.summaryUrl)
+    return resultPage_(true, 'Готово — отдельная таблица создана', 'Созданы городские вкладки: ' + result.reportTitles.join(', ') + ' и сводка.', result.summaryUrl)
   } catch (error) {
     const message = error && error.message ? error.message : 'Не удалось обработать запрос.'
     return resultPage_(false, 'Не удалось записать отчёт', message, '')
   }
 }
 
-function publish_(spreadsheet, payload) {
+function publish_(templateSpreadsheet, payload) {
   if (!Array.isArray(payload.directions) || !payload.directions.length || payload.directions.length > JARVIS_MAX_DIRECTIONS) {
     throw new Error('Проверьте количество направлений в Jarvis.')
+  }
+  if (typeof payload.requestId !== 'string' || !/^[A-Za-z0-9_-]{8,100}$/.test(payload.requestId)) {
+    throw new Error('Не удалось проверить номер отправки. Повторите выгрузку из Jarvis.')
   }
   const directions = normalizeDirections_(payload.directions)
   const totalRows = directions.reduce(function (sum, direction) { return sum + direction.rows.length }, 0)
   if (totalRows > JARVIS_MAX_ROWS) throw new Error('В отчёте слишком много строк для одной отправки.')
 
-  const runHash = runHash_(directions)
+  const requestKey = requestKey_(payload.requestId)
   const lock = LockService.getScriptLock()
-  if (!lock.tryLock(30000)) throw new Error('Таблица уже обрабатывает другой запрос. Подождите и попробуйте ещё раз.')
+  if (!lock.tryLock(30000)) throw new Error('Уже обрабатывается другая выгрузка. Подождите и попробуйте ещё раз.')
 
   try {
     const properties = PropertiesService.getScriptProperties()
-    const previous = properties.getProperty(JARVIS_HISTORY_PREFIX + runHash)
+    const previous = properties.getProperty(requestKey)
     if (previous) {
       const saved = JSON.parse(previous)
-      return { duplicate: true, summarySheetId: saved.summarySheetId }
+      return { duplicate: true, summaryUrl: saved.summaryUrl }
     }
 
-    const sheets = spreadsheet.getSheets()
-    const usedTitles = new Set(sheets.map(function (sheet) { return sheet.getName().toLocaleLowerCase('ru-RU') }))
-    const dateTime = Utilities.formatDate(new Date(), 'Europe/Moscow', 'dd.MM HH-mm-ss')
+    const templateSheets = templateSpreadsheet.getSheets()
+    const photoFormula = findPhotoFormula_(findTemplate_(templateSheets, 'МСК'))
+    const dateTime = Utilities.formatDate(new Date(), 'Europe/Moscow', 'dd.MM.yyyy HH-mm')
+    const output = SpreadsheetApp.create('Jarvis — направления — ' + dateTime)
     const createdSheets = []
     try {
+      DriveApp.getFileById(output.getId()).moveTo(DriveApp.getFolderById(JARVIS_OUTPUT_FOLDER_ID))
+      const usedTitles = new Set(output.getSheets().map(function (sheet) { return sheet.getName().toLocaleLowerCase('ru-RU') }))
       const reports = directions.map(function (direction) {
         const destination = destinationFor_(direction.name)
-        const title = uniqueTitle_(destination.label + ' с ' + dateTime, usedTitles)
-        const template = findTemplate_(sheets, direction.name)
-        const reportSheet = createReportSheet_(spreadsheet, template, title, direction.rows, createdSheets)
+        const title = uniqueTitle_(destination.label, usedTitles)
+        const template = findTemplate_(templateSheets, direction.name)
+        const reportSheet = createReportSheet_(output, template, title, direction, photoFormula, createdSheets)
         return { title: title, sheet: reportSheet }
       })
 
-      const summaryTitle = uniqueTitle_('Сводка ' + dateTime, usedTitles)
-      const summarySheet = createSummarySheet_(spreadsheet, reports[0] ? findTemplate_(sheets, directions[0].name) : null, summaryTitle, directions, reports, createdSheets)
+      const summaryTitle = uniqueTitle_('Сводка', usedTitles)
+      const summarySheet = createSummarySheet_(output, null, summaryTitle, directions, reports, createdSheets)
+      const createdSheetIds = new Set(createdSheets.map(function (sheet) { return sheet.getSheetId() }))
+      output.getSheets().filter(function (sheet) { return !createdSheetIds.has(sheet.getSheetId()) })
+        .forEach(function (sheet) { output.deleteSheet(sheet) })
       SpreadsheetApp.flush()
       trimHistory_(properties)
-      const entry = { summarySheetId: summarySheet.getSheetId(), createdAt: Date.now() }
-      properties.setProperty(JARVIS_HISTORY_PREFIX + runHash, JSON.stringify(entry))
+      const summaryUrl = output.getUrl() + '#gid=' + summarySheet.getSheetId()
+      const entry = { spreadsheetId: output.getId(), summaryUrl: summaryUrl, createdAt: Date.now() }
+      properties.setProperty(requestKey, JSON.stringify(entry))
 
       return {
         duplicate: false,
-        reportCount: reports.length,
+        reportTitles: reports.map(function (report) { return report.title }),
         summaryTitle: summaryTitle,
-        summaryUrl: JARVIS_SPREADSHEET_URL_() + '#gid=' + summarySheet.getSheetId(),
+        summaryUrl: summaryUrl,
       }
     } catch (error) {
-      createdSheets.reverse().forEach(function (sheet) {
-        try { spreadsheet.deleteSheet(sheet) } catch (_cleanupError) { /* Keep the original failure. */ }
-      })
+      try { DriveApp.getFileById(output.getId()).setTrashed(true) } catch (_cleanupError) { /* Keep the original failure. */ }
       throw error
     }
   } finally {
@@ -152,48 +158,60 @@ function normalizeDirections_(value) {
   })
 }
 
-function createReportSheet_(spreadsheet, template, title, rows, createdSheets) {
-  const sheet = createSheetFromTemplate_(spreadsheet, template, title, 7, rows.length + 1, createdSheets)
-  const values = [['Артикул', 'Короб', 'Участок', 'В наличии, шт.', 'Взять, шт.', 'Статус', 'ФОТО']]
-  const statusByArticle = new Map()
-  const shortageByArticle = new Map()
-  rows.forEach(function (row) {
-    const current = statusByArticle.get(row.article)
-    if (!current || (current === 'enough' && row.status !== 'enough') || row.status === 'not_found') {
-      statusByArticle.set(row.article, row.status)
+function createReportSheet_(spreadsheet, template, title, direction, photoFormula, createdSheets) {
+  const rows = direction.rows.filter(function (row) { return row.allocated > 0 })
+  const sheet = createSheetFromTemplate_(spreadsheet, template, title, 4, rows.length + 2, createdSheets)
+  const destination = destinationFor_(direction.name)
+
+  sheet.getRange(1, 1).setValue(destination.label)
+  sheet.getRange(2, 1, 1, 4).setValues([['Артикул', 'Короб', 'Взять, шт.', 'ФОТО']])
+  if (rows.length) {
+    sheet.getRange(3, 1, rows.length, 3).setValues(rows.map(function (row) {
+      return [safeSheetText_(row.article), safeSheetText_(row.box), row.allocated]
+    }))
+    if (photoFormula) {
+      sheet.getRange(3, 4, rows.length, 1).setFormulas(rows.map(function () { return [photoFormula] }))
     }
-    shortageByArticle.set(row.article, Math.max(shortageByArticle.get(row.article) || 0, row.shortage))
-  })
+  }
 
-  rows.forEach(function (row) {
-    const isMissing = row.status === 'not_found'
-    const status = isMissing
-      ? 'Не найден'
-      : statusByArticle.get(row.article) === 'shortage'
-        ? 'Дефицит: ' + (shortageByArticle.get(row.article) || row.shortage) + ' шт.'
-        : 'Хватает'
-    values.push([
-      safeSheetText_(row.article),
-      isMissing ? '—' : safeSheetText_(row.box),
-      safeSheetText_(row.section),
-      isMissing ? 0 : row.available,
-      isMissing ? 0 : row.allocated,
-      status,
-      '',
-    ])
-  })
+  sheet.setFrozenRows(2)
+  if (!template) styleManualReportSheet_(sheet, rows.length)
+  return sheet
+}
 
-  writeTable_(sheet, values, 7)
-  sheet.setColumnWidths(1, 7, 120)
+function findPhotoFormula_(template) {
+  if (!template || template.getMaxRows() < 3 || template.getMaxColumns() < 4) return ''
+  const sampleCount = Math.min(20, template.getMaxRows() - 2)
+  return template.getRange(3, 4, sampleCount, 1).getFormulas()
+    .map(function (row) { return row[0] })
+    .find(function (formula) { return Boolean(formula) }) || ''
+}
+
+function styleManualReportSheet_(sheet, rowCount) {
   sheet.setColumnWidth(1, 190)
   sheet.setColumnWidth(2, 130)
-  sheet.setColumnWidth(3, 115)
-  sheet.setColumnWidth(4, 130)
-  sheet.setColumnWidth(5, 120)
-  sheet.setColumnWidth(6, 155)
-  sheet.setColumnWidth(7, 90)
-  addStatusRules_(sheet, values.length)
-  return sheet
+  sheet.setColumnWidth(3, 130)
+  sheet.setColumnWidth(4, 110)
+  sheet.getRange(1, 1, 1, 4)
+    .setBackground('#ffffff')
+    .setFontFamily('Calibri')
+    .setFontSize(11)
+    .setFontWeight('bold')
+    .setHorizontalAlignment('center')
+    .setVerticalAlignment('middle')
+  sheet.getRange(2, 1, 1, 4)
+    .setBackground('#334155')
+    .setFontColor('#ffffff')
+    .setFontWeight('bold')
+    .setHorizontalAlignment('center')
+    .setVerticalAlignment('middle')
+  if (!rowCount) return
+
+  sheet.getRange(3, 1, rowCount, 4).setVerticalAlignment('middle').setHorizontalAlignment('center')
+  sheet.getRange(3, 1, rowCount, 1).setFontWeight('bold').setFontColor('#111827')
+  sheet.getRange(3, 2, rowCount, 1).setFontColor('#334155')
+  sheet.getRange(3, 3, rowCount, 1).setBackground('#dcfce7').setFontColor('#15803d').setFontWeight('bold')
+  sheet.getRange(3, 4, rowCount, 1).setBackground('#d9ead3')
 }
 
 function createSummarySheet_(spreadsheet, template, title, directions, reports, createdSheets) {
@@ -226,7 +244,7 @@ function createSummarySheet_(spreadsheet, template, title, directions, reports, 
   writeTable_(sheet, values, 9)
   directions.forEach(function (_direction, index) {
     const reportSheet = reports[index].sheet
-    const url = JARVIS_SPREADSHEET_URL_() + '#gid=' + reportSheet.getSheetId()
+    const url = spreadsheet.getUrl() + '#gid=' + reportSheet.getSheetId()
     sheet.getRange(index + 2, 9).setFormula('=HYPERLINK("' + url + '","Открыть")')
   })
   sheet.getRange(values.length, 1, 1, 9).setBackground('#e2e8f0').setFontColor('#172554').setFontWeight('bold')
@@ -306,16 +324,12 @@ function summarizeRows_(rows) {
   }
 }
 
-function runHash_(directions) {
-  const canonical = JSON.stringify(directions.map(function (direction) {
-    return [direction.name, direction.rows.map(function (row) {
-      return [row.article, row.needed, row.box, row.section, row.available, row.allocated, row.remainingNeed, row.status, row.shortage]
-    })]
-  }))
-  const digest = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, canonical, Utilities.Charset.UTF_8)
-  return digest.slice(0, 16).map(function (byte) {
+function requestKey_(requestId) {
+  const digest = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, requestId, Utilities.Charset.UTF_8)
+  const hash = digest.map(function (byte) {
     return ('0' + (byte & 255).toString(16)).slice(-2)
   }).join('')
+  return JARVIS_HISTORY_PREFIX + hash
 }
 
 function trimHistory_(properties) {
@@ -327,7 +341,7 @@ function trimHistory_(properties) {
       return { key: key, createdAt: createdAt }
     })
     .sort(function (left, right) { return right.createdAt - left.createdAt })
-  entries.slice(4000).forEach(function (entry) { properties.deleteProperty(entry.key) })
+  entries.slice(1000).forEach(function (entry) { properties.deleteProperty(entry.key) })
 }
 
 function findTemplate_(sheets, routeName) {
@@ -392,10 +406,6 @@ function escapeHtml_(value) {
   return String(value).replace(/[&<>"']/g, function (character) {
     return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[character]
   })
-}
-
-function JARVIS_SPREADSHEET_URL_() {
-  return 'https://docs.google.com/spreadsheets/d/' + JARVIS_SPREADSHEET_ID + '/edit'
 }
 
 function resultPage_(success, title, message, summaryUrl) {

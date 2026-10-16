@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import type { DirectionMatchResult, ShipmentDirection } from '@/types/jarvis'
 import {
   APPS_SCRIPT_SOURCE_URL,
+  JARVIS_OUTPUT_FOLDER_URL,
   JARVIS_SPREADSHEET_URL,
   buildAppsScriptPayload,
   createRequestId,
@@ -108,7 +109,7 @@ export function GoogleSheetsPublish({
       setConfirmWarnings(false)
       toast.info(payload.action === 'test'
         ? 'Проверка открылась в новой вкладке. Там появится результат.'
-        : 'Отправка открылась в новой вкладке. Проверьте там подтверждение записи.')
+        : 'Отправка открылась в новой вкладке. Дождитесь ссылки на созданную таблицу.')
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Не удалось открыть отправку в Google Таблицу.')
     } finally {
@@ -143,10 +144,13 @@ export function GoogleSheetsPublish({
         <div className="flex min-w-0 items-start gap-3">
           <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#edf4ff] text-[#2b73d2]"><CloudUpload className="h-5 w-5" /></span>
           <div className="min-w-0">
-            <h2 id="google-sheets-title" className="font-bold text-[#15274f]">Сохранить в Google Таблицу</h2>
-            <p className="mt-1 text-xs leading-5 text-[#71819a]">Создадим новые датированные вкладки для направлений и сводку. Старые данные не перезаписываются.</p>
+            <h2 id="google-sheets-title" className="font-bold text-[#15274f]">Выгрузить в Google Таблицу</h2>
+            <p className="mt-1 text-xs leading-5 text-[#71819a]">Отдельная таблица с вкладками по городам и сводкой сохранится в твоём Google Диске. Таблицу-шаблон не изменяем.</p>
+            <a href={JARVIS_OUTPUT_FOLDER_URL} target="_blank" rel="noreferrer" className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-[#2b73d2] hover:underline">
+              Папка выгрузок «Jarvis — отчёты» <ExternalLink className="h-3.5 w-3.5" />
+            </a>
             <a href={JARVIS_SPREADSHEET_URL} target="_blank" rel="noreferrer" className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-[#2b73d2] hover:underline">
-              Открыть таблицу «Кирилл» <ExternalLink className="h-3.5 w-3.5" />
+              Открыть таблицу-шаблон «Кирилл» <ExternalLink className="h-3.5 w-3.5" />
             </a>
           </div>
         </div>
@@ -164,7 +168,7 @@ export function GoogleSheetsPublish({
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <p className="text-sm font-semibold text-[#344666]">Настройка один раз — без OAuth Client ID</p>
-              <p className="mt-1 text-xs text-[#71819a]">Скрипт создаёт новые вкладки и не меняет старые.</p>
+              <p className="mt-1 text-xs text-[#71819a]">Каждая выгрузка создаёт отдельную таблицу; исходный шаблон остаётся без изменений.</p>
             </div>
             <a href={APPS_SCRIPT_SOURCE_URL} download="Jarvis-Apps-Script.gs" className="inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-md border border-[#cbd5e1] bg-white px-3 text-xs font-semibold text-[#344666] hover:bg-[#f3f6fa]">
               <FileDown className="h-3.5 w-3.5" />Скачать скрипт
@@ -176,6 +180,7 @@ export function GoogleSheetsPublish({
             <li>В Apps Script нажмите «Развернуть → Новое развертывание → Веб-приложение». Запускать от вашего имени; доступ — «Все».</li>
             <li>Скопируйте адрес веб-приложения и код доступа в поля ниже.</li>
           </ol>
+          <p className="mt-2 text-[11px] leading-4 text-[#8794a8]">При первом запуске Google попросит разрешить доступ к таблицам и Google Drive — это нужно, чтобы создать отдельный файл и скопировать формат листов.</p>
           <label htmlFor="jarvis-apps-script-url" className="mt-3 block text-xs font-semibold text-[#53647e]">Адрес веб-приложения</label>
           <input
             id="jarvis-apps-script-url"
@@ -218,8 +223,8 @@ export function GoogleSheetsPublish({
         )}
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0">
-            <p className="text-[11px] leading-5 text-[#8190a7]">Будут записаны {directions.length} направлений в порядке списка. В Google отправится только рассчитанный отчёт.</p>
-            {lastAction && <p role="status" className="mt-1 text-[11px] font-semibold text-[#168653]">{lastAction === 'test' ? 'Проверка открыта в Apps Script — посмотрите результат в новой вкладке.' : 'Отправка открыта в Apps Script — дождитесь там подтверждения записи.'}</p>}
+            <p className="text-[11px] leading-5 text-[#8190a7]">Направлений в отдельной таблице: {directions.length}. Порядок списка сохраняется, отправляется только рассчитанный отчёт.</p>
+            {lastAction && <p role="status" className="mt-1 text-[11px] font-semibold text-[#168653]">{lastAction === 'test' ? 'Проверка открыта в Apps Script — посмотрите результат в новой вкладке.' : 'Отправка открыта в Apps Script — дождитесь ссылки на отдельную Google Таблицу.'}</p>}
           </div>
           {configured ? (
             <Button
@@ -229,7 +234,7 @@ export function GoogleSheetsPublish({
               className={cn('h-10 shrink-0 bg-[#2563a9] px-4 text-xs font-bold text-white hover:bg-[#1d4f88]', saving && 'cursor-wait')}
             >
               {saving ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <CloudUpload className="h-4 w-4" />}
-              {saving ? 'Открываю…' : confirmWarnings ? 'Подтвердить и записать' : validation.warnings.length ? 'Проверить и записать' : 'Записать в таблицу'}
+              {saving ? 'Открываю…' : confirmWarnings ? 'Подтвердить выгрузку' : validation.warnings.length ? 'Проверить и выгрузить' : 'Выгрузить в Google Таблицу'}
             </Button>
           ) : (
             <Button type="button" variant="outline" onClick={() => setSettingsOpen(true)} className="h-10 shrink-0 border-[#cbd5e1] text-xs text-[#344666]">
