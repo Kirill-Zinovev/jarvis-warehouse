@@ -4,10 +4,29 @@
   "main": ".open-next/worker.js",
   "compatibility_date": "2026-07-30",
   "compatibility_flags": ["nodejs_compat"],
+  "keep_vars": true,
   "assets": {
     "directory": ".open-next/assets",
     "binding": "ASSETS"
   },
+  "ratelimits": [
+    {
+      "name": "JARVIS_EXPORT_PIN_RATE_LIMITER",
+      "namespace_id": "8617042319",
+      "simple": {
+        "limit": 100,
+        "period": 60
+      }
+    },
+    {
+      "name": "JARVIS_EXPORT_WRITE_RATE_LIMITER",
+      "namespace_id": "8617042320",
+      "simple": {
+        "limit": 20,
+        "period": 60
+      }
+    }
+  ],
   "observability": {
     "enabled": true
   }

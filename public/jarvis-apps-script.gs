@@ -27,7 +27,7 @@ function showJarvisAccessCode() {
     'p{line-height:1.5;color:#53647e}',
     'textarea{box-sizing:border-box;width:100%;height:78px;padding:10px;border:1px solid #cbd5e1;border-radius:8px;font:12px monospace;resize:none}',
     '</style></head><body>',
-    '<p>Скопируйте этот код в настройку Google Таблицы в Jarvis. Не отправляйте его другим людям.</p>',
+    '<p>Скопируйте этот код в секрет JARVIS_APPS_SCRIPT_TOKEN в настройках Cloudflare Worker. Не сообщайте его сотрудникам.</p>',
     '<textarea readonly onclick="this.select()">', escapeHtml_(token), '</textarea>',
     '<p>Код сохранён в свойствах скрипта. Его можно снова открыть через меню «Jarvis».</p>',
     '</body></html>',
@@ -36,8 +36,8 @@ function showJarvisAccessCode() {
 }
 
 function doPost(event) {
+  const parameters = event && event.parameter ? event.parameter : {}
   try {
-    const parameters = event && event.parameter ? event.parameter : {}
     const expectedToken = PropertiesService.getScriptProperties().getProperty(JARVIS_TOKEN_PROPERTY)
     if (!expectedToken || !constantTimeEquals_(String(parameters.token || ''), expectedToken)) {
       throw new Error('Неверный код доступа. Откройте в таблице меню Jarvis и скопируйте актуальный код.')
@@ -49,20 +49,32 @@ function doPost(event) {
     const templateSpreadsheet = SpreadsheetApp.openById(JARVIS_TEMPLATE_SPREADSHEET_ID)
 
     if (payload.action === 'test') {
-      return resultPage_(true, 'Подключение работает', 'Jarvis получил доступ к шаблону «' + templateSpreadsheet.getName() + '».', '')
+      return outputResult_(parameters, true, 'Подключение работает', 'Jarvis получил доступ к шаблону «' + templateSpreadsheet.getName() + '».', '')
     }
     if (payload.action !== 'publish') throw new Error('Неизвестная команда Jarvis.')
 
     const result = publish_(templateSpreadsheet, payload)
     if (result.duplicate) {
-      return resultPage_(true, 'Эта отправка уже обработана', 'Повторная таблица не создавалась.', result.summaryUrl)
+      return outputResult_(parameters, true, 'Эта отправка уже обработана', 'Повторная таблица не создавалась.', result.summaryUrl)
     }
 
-    return resultPage_(true, 'Готово — отдельная таблица создана', 'Созданы городские вкладки: ' + result.reportTitles.join(', ') + ' и сводка.', result.summaryUrl)
+    return outputResult_(parameters, true, 'Готово — отдельная таблица создана', 'Созданы городские вкладки: ' + result.reportTitles.join(', ') + ' и сводка.', result.summaryUrl)
   } catch (error) {
     const message = error && error.message ? error.message : 'Не удалось обработать запрос.'
-    return resultPage_(false, 'Не удалось записать отчёт', message, '')
+    return outputResult_(parameters, false, 'Не удалось записать отчёт', message, '')
   }
+}
+
+function outputResult_(parameters, success, title, message, summaryUrl) {
+  if (String(parameters.response || '') === 'json') {
+    return ContentService.createTextOutput(JSON.stringify({
+      success: success,
+      title: title,
+      message: message,
+      summaryUrl: summaryUrl,
+    })).setMimeType(ContentService.MimeType.JSON)
+  }
+  return resultPage_(success, title, message, summaryUrl)
 }
 
 function publish_(templateSpreadsheet, payload) {
