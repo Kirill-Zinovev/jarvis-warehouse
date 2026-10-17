@@ -122,6 +122,7 @@ function publish_(templateSpreadsheet, payload) {
       output.getSheets().filter(function (sheet) { return !createdSheetIds.has(sheet.getSheetId()) })
         .forEach(function (sheet) { output.deleteSheet(sheet) })
       SpreadsheetApp.flush()
+      DriveApp.getFileById(output.getId()).setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.EDIT)
       trimHistory_(properties)
       const summaryUrl = output.getUrl() + '#gid=' + summarySheet.getSheetId()
       const entry = { spreadsheetId: output.getId(), summaryUrl: summaryUrl, createdAt: Date.now() }
@@ -187,6 +188,8 @@ function createReportSheet_(spreadsheet, template, title, direction, photoFormul
   }
 
   sheet.setFrozenRows(2)
+  if (rows.length) sheet.setRowHeights(3, rows.length, 150)
+  fitSheetGrid_(sheet, 4, rows.length + 2)
   if (!template) styleManualReportSheet_(sheet, rows.length)
   return sheet
 }
@@ -264,7 +267,18 @@ function createSummarySheet_(spreadsheet, template, title, directions, reports, 
   sheet.setColumnWidth(2, 230)
   sheet.setColumnWidths(3, 6, 110)
   sheet.setColumnWidth(9, 110)
+  fitSheetGrid_(sheet, 9, values.length)
   return sheet
+}
+
+function fitSheetGrid_(sheet, lastColumn, lastRow) {
+  const maxColumns = sheet.getMaxColumns()
+  sheet.showColumns(1, lastColumn)
+  if (maxColumns > lastColumn) sheet.hideColumns(lastColumn + 1, maxColumns - lastColumn)
+
+  const maxRows = sheet.getMaxRows()
+  sheet.showRows(1, lastRow)
+  if (maxRows > lastRow) sheet.hideRows(lastRow + 1, maxRows - lastRow)
 }
 
 function createSheetFromTemplate_(spreadsheet, template, title, columns, rows, createdSheets) {
