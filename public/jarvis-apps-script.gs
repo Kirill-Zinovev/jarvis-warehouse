@@ -106,7 +106,6 @@ function publish_(templateSpreadsheet, payload) {
     const output = SpreadsheetApp.create('Jarvis — направления — ' + dateTime)
     const createdSheets = []
     try {
-      DriveApp.getFileById(output.getId()).moveTo(DriveApp.getFolderById(JARVIS_OUTPUT_FOLDER_ID))
       const usedTitles = new Set(output.getSheets().map(function (sheet) { return sheet.getName().toLocaleLowerCase('ru-RU') }))
       const reports = directions.map(function (direction) {
         const destination = destinationFor_(direction.name)
@@ -122,7 +121,9 @@ function publish_(templateSpreadsheet, payload) {
       output.getSheets().filter(function (sheet) { return !createdSheetIds.has(sheet.getSheetId()) })
         .forEach(function (sheet) { output.deleteSheet(sheet) })
       SpreadsheetApp.flush()
-      DriveApp.getFileById(output.getId()).setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.EDIT)
+      const outputFile = DriveApp.getFileById(output.getId())
+      outputFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.EDIT)
+      outputFile.moveTo(DriveApp.getFolderById(JARVIS_OUTPUT_FOLDER_ID))
       trimHistory_(properties)
       const summaryUrl = output.getUrl() + '#gid=' + summarySheet.getSheetId()
       const entry = { spreadsheetId: output.getId(), summaryUrl: summaryUrl, createdAt: Date.now() }
