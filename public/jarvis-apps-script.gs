@@ -44,7 +44,7 @@ function doPost(event) {
     }
 
     const payloadText = String(parameters.payload || '')
-    if (!payloadText || payloadText.length > 5_000_000) throw new Error('Пустой или слишком большой запрос.')
+    if (!payloadText || payloadText.length > 5000000) throw new Error('Пустой или слишком большой запрос.')
     const payload = JSON.parse(payloadText)
     const templateSpreadsheet = SpreadsheetApp.openById(JARVIS_TEMPLATE_SPREADSHEET_ID)
 
