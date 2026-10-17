@@ -120,6 +120,8 @@ function publish_(templateSpreadsheet, payload) {
       const createdSheetIds = new Set(createdSheets.map(function (sheet) { return sheet.getSheetId() }))
       output.getSheets().filter(function (sheet) { return !createdSheetIds.has(sheet.getSheetId()) })
         .forEach(function (sheet) { output.deleteSheet(sheet) })
+      summarySheet.activate()
+      output.moveActiveSheet(output.getSheets().length)
       SpreadsheetApp.flush()
       const outputFile = DriveApp.getFileById(output.getId())
       outputFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.EDIT)
