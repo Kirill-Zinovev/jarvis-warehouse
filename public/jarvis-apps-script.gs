@@ -176,11 +176,14 @@ function normalizeDirections_(value) {
 
 function createReportSheet_(spreadsheet, template, title, direction, photoFormula, createdSheets) {
   const rows = direction.rows.filter(function (row) { return row.allocated > 0 })
-  const sheet = createSheetFromTemplate_(spreadsheet, template, title, 4, rows.length + 2, createdSheets)
+  const sheet = createSheetFromTemplate_(spreadsheet, template, title, 5, rows.length + 2, createdSheets)
   const destination = destinationFor_(direction.name)
 
   sheet.getRange(1, 1).setValue(destination.label)
   sheet.getRange(2, 1, 1, 4).setValues([['Артикул', 'Короб', 'Взять, шт.', 'ФОТО']])
+  sheet.getRange(2, 5).setValue('Участок')
+  sheet.getRange(2, 1).copyTo(sheet.getRange(2, 5), SpreadsheetApp.CopyPasteType.PASTE_FORMAT, false)
+  sheet.setColumnWidth(5, 130)
   if (rows.length) {
     sheet.getRange(3, 1, rows.length, 3).setValues(rows.map(function (row) {
       return [safeSheetText_(row.article), safeSheetText_(row.box), row.allocated]
@@ -188,11 +191,15 @@ function createReportSheet_(spreadsheet, template, title, direction, photoFormul
     if (photoFormula) {
       sheet.getRange(3, 4, rows.length, 1).setFormulas(rows.map(function () { return [photoFormula] }))
     }
+    sheet.getRange(3, 5, rows.length, 1)
+      .setValues(rows.map(function (row) { return [safeSheetText_(row.section)] }))
+      .setVerticalAlignment('middle')
+      .setHorizontalAlignment('center')
   }
 
   sheet.setFrozenRows(2)
   if (rows.length) sheet.setRowHeights(3, rows.length, 150)
-  fitSheetGrid_(sheet, 4, rows.length + 2)
+  fitSheetGrid_(sheet, 5, rows.length + 2)
   if (!template) styleManualReportSheet_(sheet, rows.length)
   return sheet
 }
