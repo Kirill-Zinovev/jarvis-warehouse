@@ -147,13 +147,23 @@ function findCell(grid: GridRow[], candidates: string[], maxRows = 12): { row: n
   return null
 }
 
+function normalizeOneCSection(value: string): string {
+  const compactSection = normalizeHeader(value)
+  const floorMatch = compactSection.match(/(?:^|[^\d])(\d+)этаж|этаж(\d+)/)
+  if (floorMatch) return `${floorMatch[1] || floorMatch[2]} этаж`
+  if (compactSection.includes('бокс') || compactSection.includes('box')) return 'БОКС'
+  return value
+}
+
 /**
  * Parse the hierarchical report produced by 1C. It has service rows first,
- * then a warehouse subtotal row, and item rows with article/box/quantity in
- * columns A/D/E. The current warehouse section is inherited by each item.
+ * then warehouse subtotal rows, and item rows with article/box/quantity in
+ * separate columns. Warehouse names can be in the product-name column, so
+ * the current section must be inherited from either that column or the article column.
  */
 function parseOneCWarehouseReport(grid: GridRow[]): { rows: RawRow[]; columns: string[] } | null {
   const articleHeader = findCell(grid, ['номенклатура'])
+  const nameHeader = findCell(grid, ['номенклатура.наименование'])
   const boxHeader = findCell(grid, ['ячейка', 'короб'])
   const quantityHeader = findCell(grid, ['остаток', 'количество'])
   if (!articleHeader || !boxHeader || !quantityHeader) return null
@@ -170,22 +180,17 @@ function parseOneCWarehouseReport(grid: GridRow[]): { rows: RawRow[]; columns: s
   for (let rowIndex = startRow; rowIndex < grid.length; rowIndex += 1) {
     const row = grid[rowIndex]
     const article = textValue(row[articleHeader.column])
+    const name = nameHeader ? textValue(row[nameHeader.column]) : ''
     const box = textValue(row[boxHeader.column])
     const quantity = numericValue(row[quantityHeader.column])
     const compactArticle = normalizeHeader(article)
+    const compactName = normalizeHeader(name)
 
-    if (compactArticle === 'итого') break
+    if (compactArticle === 'итого' || compactName === 'итого') break
 
-    if (article && !box && quantity !== null) {
-      const compactSection = normalizeHeader(article)
-      const floorMatch = compactSection.match(/(\d+)этаж/)
-      if (compactSection.includes('бокс') || compactSection.includes('box')) {
-        section = 'БОКС'
-      } else if (floorMatch) {
-        section = `${floorMatch[1]} этаж`
-      } else {
-        section = article
-      }
+    const sectionLabel = article && !box ? article : !article && !box ? name : ''
+    if (sectionLabel && quantity !== null) {
+      section = normalizeOneCSection(sectionLabel)
       continue
     }
 
